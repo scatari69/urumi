@@ -258,7 +258,21 @@ class LLMClient:
                 response = await self._post_with_retries(payload)
 
             data = response.json()
-            return data["choices"][0]["message"]["content"] or ""
+            choices = data.get("choices") or []
+            if not choices:
+                # OpenRouter sometimes wraps an upstream-provider failure as HTTP 200
+                # with an "error" body instead of a real error status code.
+                error = data.get("error")
+                message = error.get("message") if isinstance(error, dict) else error
+                code = error.get("code") if isinstance(error, dict) else None
+                if code in QUOTA_EXHAUSTED_STATUS_CODES:
+                    raise LLMQuotaError(f"OpenRouter error {code}: {message}")
+                if code in MODEL_NOT_FOUND_STATUS_CODES:
+                    raise LLMModelNotFound(f"OpenRouter error {code}: {message}")
+                raise LLMUnavailableError(f"OpenRouter response had no choices: {message or data}")
+
+            content = (choices[0].get("message") or {}).get("content")
+            return content or ""
         except Exception as exc:
             self.error_count += 1
             self.last_error = f"{type(exc).__name__}: {exc}"
