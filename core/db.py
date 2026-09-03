@@ -257,6 +257,16 @@ async def insert_message(
         await db.commit()
 
 
+async def clear_chat_history(chat_id: int) -> int:
+    """Wipes this chat's stored message history — the context fed into replies,
+    summaries, and profile-building. Leaves user_profiles/notes and mood state
+    untouched; those have their own dedicated removal paths (/forgetme, /profiles)."""
+    async with get_db() as db:
+        cursor = await db.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+        await db.commit()
+        return cursor.rowcount
+
+
 async def insert_summary(
     *,
     chat_id: int,
