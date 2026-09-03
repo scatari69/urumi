@@ -26,6 +26,18 @@ NOTES_HEADER = "Notes about participants:"
 NOTES_CHAR_LIMIT = 1500
 REPLY_COOLDOWN_SECONDS = 10
 
+# Structural, not persona — kept separate from the editable system_prompt/mood text
+# so it always reaches the model, telling it the transcript below is not one voice.
+CHAT_FORMAT_NOTE = (
+    "Ты общаешься в групповом чате с несколькими разными людьми, не с одним "
+    "собеседником. История ниже — строки вида 'Имя: текст', и каждая строка написана "
+    "своим отдельным человеком: не путай их между собой и не приписывай слова одного "
+    "участника другому. В конце отдельно указано, кто написал сообщение, на которое "
+    "нужно ответить именно сейчас, — отвечай ему, а не чату в целом."
+)
+HISTORY_LABEL = "История чата (для контекста):"
+CURRENT_LABEL = "Ответь на это сообщение от {name}:"
+
 QUOTA_MESSAGE = "Лимит запросов к модели исчерпан, попробую позже."
 TIMEOUT_MESSAGE = "Модель не ответила вовремя, попробуй ещё раз."
 
@@ -145,14 +157,24 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
     history = history[-context_messages:] if context_messages > 0 else []
 
     notes_block = _build_notes_block(await _fetch_notes(message.chat.id))
-    system_content = f"{system_prompt}\n\n{notes_block}" if notes_block else system_prompt
+    system_content = f"{system_prompt}\n\n{CHAT_FORMAT_NOTE}"
+    if notes_block:
+        system_content = f"{system_content}\n\n{notes_block}"
 
-    lines = [f"{display_name or 'unknown'}: {text}" for _, display_name, text in history]
-    lines.append(f"{message.from_user.full_name}: {message.text}")
+    history_lines = [f"{display_name or 'unknown'}: {text}" for _, display_name, text in history]
+    current_line = f"{message.from_user.full_name}: {message.text}"
+
+    user_content_parts = []
+    if history_lines:
+        user_content_parts.append(f"{HISTORY_LABEL}\n" + "\n".join(history_lines))
+    user_content_parts.append(
+        f"{CURRENT_LABEL.format(name=message.from_user.full_name)}\n{current_line}"
+    )
+    user_content = "\n\n".join(user_content_parts)
 
     llm_messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": "\n".join(lines)},
+        {"role": "user", "content": user_content},
     ]
 
     try:
