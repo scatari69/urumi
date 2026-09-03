@@ -42,6 +42,10 @@ class LLMModelNotFound(Exception):
     """Raised on 404 — the model id is unknown, or dropped off the free tier."""
 
 
+class LLMUnavailableError(Exception):
+    """Raised when a retryable error (429/5xx) still fails after MAX_ATTEMPTS."""
+
+
 def resolve_model(values: dict[str, str], key: str) -> str:
     """Per-task model from settings, defaulting to the configured one."""
     return values.get(key) or settings.MODEL
@@ -197,8 +201,8 @@ class LLMClient:
     ) -> str:
         """Send a completion request. The model is always explicit — never read from config.
 
-        If the primary model is out of quota (402/403) or unknown (404), the fallbacks
-        are tried in order.
+        If the primary model is out of quota (402/403), unknown (404), or still failing
+        after retries (429/5xx), the fallbacks are tried in order.
         """
         if self._client is None:
             raise RuntimeError("LLMClient.start() must be called before chat()")
@@ -214,7 +218,7 @@ class LLMClient:
             is_last = index == len(candidates) - 1
             try:
                 answer = await self._attempt(candidate, messages, temperature, max_tokens)
-            except (LLMQuotaError, LLMModelNotFound) as exc:
+            except (LLMQuotaError, LLMModelNotFound, LLMUnavailableError) as exc:
                 if is_last:
                     raise
                 logger.warning(
@@ -277,17 +281,22 @@ class LLMClient:
                     f"OpenRouter model not found {response.status_code}: {response.text}"
                 )
 
-            if response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_ATTEMPTS:
-                logger.warning(
-                    "OpenRouter request failed with %d (attempt %d/%d), retrying in %.0fs",
-                    response.status_code,
-                    attempt,
-                    MAX_ATTEMPTS,
-                    delay,
+            if response.status_code in RETRYABLE_STATUS_CODES:
+                if attempt < MAX_ATTEMPTS:
+                    logger.warning(
+                        "OpenRouter request failed with %d (attempt %d/%d), retrying in %.0fs",
+                        response.status_code,
+                        attempt,
+                        MAX_ATTEMPTS,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                raise LLMUnavailableError(
+                    f"OpenRouter request still failing with {response.status_code} "
+                    f"after {MAX_ATTEMPTS} attempts: {response.text}"
                 )
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
 
             response.raise_for_status()
             return response

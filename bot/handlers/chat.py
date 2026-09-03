@@ -9,7 +9,7 @@ from aiogram.types import Message, User
 
 from core.config import settings
 from core.db import get_db, get_settings, insert_message, setting_bool, setting_value
-from core.llm import LLMQuotaError, llm_client, parse_fallbacks, resolve_model
+from core.llm import LLMQuotaError, LLMUnavailableError, llm_client, parse_fallbacks, resolve_model
 from core.moods import compose_system_prompt, mood_temperature, resolve_current
 from core.prompts import base_system_prompt
 
@@ -39,6 +39,7 @@ HISTORY_LABEL = "История чата (для контекста):"
 CURRENT_LABEL = "Ответь на это сообщение от {name}:"
 
 QUOTA_MESSAGE = "Лимит запросов к модели исчерпан, попробую позже."
+OVERLOADED_MESSAGE = "Модель сейчас перегружена, попробуй чуть позже."
 TIMEOUT_MESSAGE = "Модель не ответила вовремя, попробуй ещё раз."
 
 _last_reply_at: dict[int, float] = {}
@@ -187,6 +188,10 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
     except LLMQuotaError:
         logger.exception("LLM quota exhausted while answering in chat %s", message.chat.id)
         await message.reply(QUOTA_MESSAGE)
+        return
+    except LLMUnavailableError:
+        logger.exception("LLM still failing after retries while answering in chat %s", message.chat.id)
+        await message.reply(OVERLOADED_MESSAGE)
         return
     except httpx.TimeoutException:
         logger.exception("LLM request timed out while answering in chat %s", message.chat.id)

@@ -7,7 +7,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from core.config import settings
-from core.llm import LLMQuotaError
+from core.llm import LLMQuotaError, LLMUnavailableError
 from core.summaries import NotEnoughMessages, generate_summary
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ SPLIT_CHAR_LIMIT = 3500
 
 USAGE_MESSAGE = "Использование: /summary [часов], например /summary 6"
 QUOTA_MESSAGE = "Лимит запросов к модели исчерпан, попробую позже."
+OVERLOADED_MESSAGE = "Модель сейчас перегружена, попробуй чуть позже."
 TIMEOUT_MESSAGE = "Модель не ответила вовремя, попробуй ещё раз."
 EMPTY_ANSWER_MESSAGE = "Модель вернула пустой пересказ."
 
@@ -70,6 +71,10 @@ async def summarize_chat(message: Message, command: CommandObject) -> None:
     except LLMQuotaError:
         logger.exception("LLM quota exhausted while summarizing chat %s", message.chat.id)
         await message.reply(QUOTA_MESSAGE)
+        return
+    except LLMUnavailableError:
+        logger.exception("LLM still failing after retries while summarizing chat %s", message.chat.id)
+        await message.reply(OVERLOADED_MESSAGE)
         return
     except httpx.TimeoutException:
         logger.exception("LLM request timed out while summarizing chat %s", message.chat.id)

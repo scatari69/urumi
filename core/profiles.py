@@ -6,7 +6,7 @@ import httpx
 
 from core.config import settings
 from core.db import get_db, get_settings, setting_value
-from core.llm import LLMQuotaError, llm_client, parse_fallbacks, resolve_model
+from core.llm import LLMQuotaError, LLMUnavailableError, llm_client, parse_fallbacks, resolve_model
 from core.prompts import base_system_prompt, profile_prompt
 
 logger = logging.getLogger(__name__)
@@ -201,6 +201,9 @@ async def run_profile_updates(bot_id: int) -> None:
             )
         except LLMQuotaError:
             logger.exception("Profile update: quota exhausted, stopping this cycle")
+            return
+        except LLMUnavailableError:
+            logger.exception("Profile update: model still failing after retries, stopping this cycle")
             return
         except httpx.TimeoutException:
             logger.exception("Profile update: timed out for user %s, skipping", user_id)
