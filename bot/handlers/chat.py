@@ -9,7 +9,7 @@ from aiogram import Bot, F, Router
 from aiogram.types import Message, User
 
 from bot.filters import ActiveChat
-from bot.handlers.logger import PHOTO_PLACEHOLDER
+from bot.handlers.logger import extract_text
 from core.db import get_chat_settings, get_db, insert_message, setting_bool, setting_value
 from core.llm import (
     LLMQuotaError,
@@ -42,7 +42,9 @@ CHAT_FORMAT_NOTE = (
     "собеседником. История ниже — строки вида 'Имя: текст', и каждая строка написана "
     "своим отдельным человеком: не путай их между собой и не приписывай слова одного "
     "участника другому. В конце отдельно указано, кто написал сообщение, на которое "
-    "нужно ответить именно сейчас, — отвечай ему, а не чату в целом."
+    "нужно ответить именно сейчас, — отвечай ему, а не чату в целом. Если строка "
+    "начинается с '[переслано, автор: Имя]' — значит участник чата переслал сюда "
+    "чужое сообщение; переславший его не писал, автор указан в скобках."
 )
 HISTORY_LABEL = "История чата (для контекста):"
 CURRENT_LABEL = "Ответь на это сообщение от {name}:"
@@ -182,7 +184,7 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
         mood, setting_value(values, "temperature", DEFAULT_TEMPERATURE, float)
     )
 
-    text_or_caption = message.text or message.caption or PHOTO_PLACEHOLDER
+    text_or_caption = extract_text(message)
 
     history = await _fetch_history(message.chat.id, context_messages + 1)
     if history and history[-1][0] == message.from_user.id and history[-1][2] == text_or_caption:
