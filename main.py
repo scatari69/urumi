@@ -5,6 +5,7 @@ import time
 
 import uvicorn
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand, BotCommandScopeChat
 
 from admin.app import app as admin_app
 from bot.handlers import router
@@ -20,6 +21,32 @@ CLEANUP_INTERVAL_SECONDS = 3600
 VACUUM_EVERY_N_CLEANUPS = 24
 # Must stay below the container's stop_grace_period, or Docker escalates to SIGKILL.
 SHUTDOWN_TIMEOUT_SECONDS = 10
+
+# Scoped to the group only — this bot serves a single group, not private chats.
+# /profile itself stays admin-only in the handler (bot/handlers/profile.py); listing
+# it here is just a menu entry, not a permission grant.
+COMMANDS = [
+    BotCommand(command="summary", description="Пересказ последних сообщений (можно указать часы)"),
+    BotCommand(command="mood", description="Текущее настроение бота / переключить"),
+    BotCommand(command="profile", description="Заметка об участнике — реплаем на его сообщение (админы)"),
+    BotCommand(command="forgetme", description="Стереть свою заметку, отказаться от профилирования"),
+]
+
+
+async def _register_commands(bot: Bot) -> None:
+    """Overwrites the command list for this chat — including leftovers from a previous
+    bot framework that BotFather's own UI can't reach, since commands live in separate
+    slots per (scope, language_code) and BotFather only edits the unscoped default.
+
+    Covers the common language_code variants too: a scoped-but-language-specific
+    leftover would otherwise still win over our language-less entry for those clients.
+    """
+    scope = BotCommandScopeChat(chat_id=settings.GROUP_CHAT_ID)
+    try:
+        for language_code in (None, "ru", "en"):
+            await bot.set_my_commands(COMMANDS, scope=scope, language_code=language_code)
+    except Exception:
+        logger.exception("Failed to register bot commands, continuing without it")
 
 
 async def cleanup_task() -> None:
@@ -73,6 +100,8 @@ async def main() -> None:
     bot = Bot(token=settings.BOT_TOKEN)
     dp = Dispatcher()
     dp.include_router(router)
+
+    await _register_commands(bot)
 
     server = uvicorn.Server(
         uvicorn.Config(
