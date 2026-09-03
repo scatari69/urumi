@@ -1,0 +1,31 @@
+<div id="picker-{{ p.field }}">
+  {% if p.error %}
+    <div class="flash warn-box">
+      Не удалось получить список моделей OpenRouter ({{ p.error }}).
+      Введите id модели вручную.
+    </div>
+    <input type="text" name="{{ p.field }}" value="{{ p.selected }}" placeholder="{{ p.default_model }}">
+    <span class="hint">Пусто — {{ p.default_model }} из .env</span>
+  {% else %}
+    <select name="{{ p.field }}" size="1"
+            hx-get="/settings/models/info"
+            hx-trigger="change"
+            hx-target="#info-{{ p.field }}"
+            hx-swap="outerHTML"
+            hx-include="this"
+            hx-vals='{"field": "{{ p.field }}"}'>
+      <option value="" {% if not p.selected %}selected{% endif %}>— из .env: {{ p.default_model }} —</option>
+      {% for vendor, items in p.groups %}
+      <optgroup label="{{ vendor }}">
+        {% for m in items %}
+        <option value="{{ m.id }}" {% if m.id == p.selected %}selected{% endif %}>
+          {{ m.id }}{% if m.pricing.prompt is not none and m.pricing.prompt | float == 0 %} · free{% endif %}
+        </option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+    <span class="hint">Показано моделей: {{ p.total }}{% if p.free_only %} (только бесплатные){% endif %}</span>
+    {% include "_model_info.html" %}
+  {% endif %}
+</div>

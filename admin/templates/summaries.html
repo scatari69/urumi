@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set active = 'summaries' %}
+{% block title %}Пересказы — urumi{% endblock %}
+
+{% block content %}
+<h1>Пересказы</h1>
+
+<div class="panel">
+  <form class="filters" hx-post="/summaries/generate" hx-target="#summaries-list" hx-swap="outerHTML"
+        hx-indicator="#summaries-list">
+    <label>
+      <span class="lbl">За сколько часов</span>
+      <input type="number" name="hours" value="24" min="1" step="1">
+    </label>
+    <button type="submit">Сгенерировать сейчас</button>
+    <span class="muted">Запрос к модели может занять время.</span>
+  </form>
+</div>
+
+<div class="panel">
+  {% include "_summaries_list.html" %}
+</div>
+{% endblock %}

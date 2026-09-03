@@ -1,0 +1,101 @@
+<div id="moods-list">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+  {% if preview %}
+  <div class="panel preview">
+    <h2>Собранный system prompt — {{ preview.name }}</h2>
+    <pre class="note">{{ preview.assembled }}</pre>
+    <span class="hint">
+      Так его увидит модель в чате: базовый system_prompt плюс фрагмент настроения.
+      Пересказы и заметки используют только базовую часть ({{ preview.base | length }} символов).
+    </span>
+  </div>
+  {% endif %}
+
+  {% if moods %}
+  <table class="moods">
+    <thead>
+      <tr>
+        <th>Настроение</th>
+        <th>Фрагмент</th>
+        <th>temp</th>
+        <th>Порядок</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in moods %}
+      <tr class="{% if m.name == current %}active-mood{% endif %}">
+        <td>
+          <div class="mono"><b>{{ m.name }}</b></div>
+          {% if m.name == current %}<div class="ok">активно</div>{% endif %}
+          {% if m.is_default %}<div class="muted">по умолчанию</div>{% endif %}
+        </td>
+        <td colspan="3">
+          <form id="mood-form-{{ m.name }}"
+                hx-post="/moods/{{ m.name }}/save"
+                hx-target="#moods-list" hx-swap="outerHTML">
+            <input type="text" name="label" value="{{ m.label or '' }}" placeholder="подпись">
+            <textarea name="prompt_fragment" rows="4"
+                      placeholder="модификатор поверх базового промпта">{{ m.prompt_fragment or '' }}</textarea>
+            <div class="row-tight">
+              <input type="text" name="temperature" value="{{ '' if m.temperature is none else m.temperature }}"
+                     placeholder="temp (пусто — общая)">
+              <input type="number" name="sort_order" value="{{ m.sort_order if m.sort_order is not none else '' }}"
+                     step="10" placeholder="порядок">
+              <button type="submit" class="small">Сохранить</button>
+              <button type="button" class="small ghost"
+                      hx-post="/moods/{{ m.name }}/preview"
+                      hx-include="#mood-form-{{ m.name }} [name='prompt_fragment']"
+                      hx-target="#moods-list" hx-swap="outerHTML">Предпросмотр</button>
+            </div>
+            <span class="hint">{{ (m.prompt_fragment or '') | length }} символов</span>
+          </form>
+        </td>
+        <td>
+          <div class="actions">
+            {% if m.name != current %}
+            <button class="small"
+                    hx-post="/moods/{{ m.name }}/activate"
+                    hx-target="#moods-list" hx-swap="outerHTML">Включить</button>
+            {% endif %}
+            {% if not m.is_default %}
+            <button class="small ghost"
+                    hx-post="/moods/{{ m.name }}/default"
+                    hx-target="#moods-list" hx-swap="outerHTML">По умолчанию</button>
+            <button class="small danger"
+                    hx-post="/moods/{{ m.name }}/delete"
+                    hx-target="#moods-list" hx-swap="outerHTML"
+                    hx-confirm="Удалить настроение {{ m.name }}?">Удалить</button>
+            {% else %}
+            <span class="muted">нельзя удалить</span>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Настроений пока нет.</p>
+  {% endif %}
+
+  <form class="filters add-mood" hx-post="/moods/add" hx-target="#moods-list" hx-swap="outerHTML">
+    <label>
+      <span class="lbl">Новое настроение</span>
+      <input type="text" name="name" placeholder="имя латиницей, напр. grumpy">
+    </label>
+    <label>
+      <span class="lbl">Подпись</span>
+      <input type="text" name="label" placeholder="Ворчливое">
+    </label>
+    <button type="submit">Добавить</button>
+  </form>
+
+  <p class="hint">
+    Смена из чата: {% if admin_only %}только для ADMIN_USER_IDS{% else %}доступна всем{% endif %}
+    (ключ mood_admin_only). Автосброс:
+    {% if ttl_minutes %}через {{ ttl_minutes }} мин без переключений{% else %}выключен{% endif %}
+    (ключ mood_ttl_minutes).
+  </p>
+</div>

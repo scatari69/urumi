@@ -1,0 +1,14 @@
+<div id="test-{{ p.field }}" class="model-test">
+  {% if p.ok %}
+    <div class="flash ok">
+      <b>{{ p.model }}</b> ответила за {{ p.latency_ms }} мс:
+      <div class="note">{{ p.reply or '(пустой ответ)' }}</div>
+    </div>
+  {% else %}
+    <div class="flash err">
+      <b>{{ p.model }}</b> — ошибка через {{ p.latency_ms }} мс:
+      <div class="note mono">{{ p.error }}</div>
+    </div>
+  {% endif %}
+  <span class="hint">Проба идёт без фолбэков и не сохраняет модель — нажмите «Сохранить», чтобы применить.</span>
+</div>

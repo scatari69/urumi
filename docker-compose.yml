@@ -1,0 +1,32 @@
+services:
+  bot:
+    build: .
+    container_name: urumi-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${ADMIN_PORT:-8080}:${ADMIN_PORT:-8080}"
+    volumes:
+      # Named volume: Docker seeds it from the image, so it is owned by the
+      # non-root user. For a bind mount instead, use ./data:/app/data and run
+      # `sudo chown -R 10001:10001 ./data` first.
+      - urumi-data:/app/data
+    # Give main.py room to finish its own shutdown before SIGKILL.
+    stop_grace_period: 20s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import os, sys, urllib.request
+          url = "http://127.0.0.1:" + os.environ.get("ADMIN_PORT", "8080") + "/health"
+          sys.exit(0 if urllib.request.urlopen(url, timeout=5).status == 200 else 1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  urumi-data:

@@ -1,0 +1,21 @@
+<div id="info-{{ p.field }}" class="model-info">
+  {% if p.selected_model %}
+    <span class="muted">контекст</span>
+    <b>{{ "{:,}".format(p.selected_model.context_length).replace(",", " ") if p.selected_model.context_length else "—" }}</b>
+    <span class="muted">токенов</span>
+    <span class="sep">·</span>
+    <span class="muted">вход</span> <b>{{ p.selected_model.pricing.prompt | per_million }}</b>
+    <span class="muted">/ 1M</span>
+    <span class="sep">·</span>
+    <span class="muted">выход</span> <b>{{ p.selected_model.pricing.completion | per_million }}</b>
+    <span class="muted">/ 1M</span>
+    {% if p.selected_model.architecture.modality %}
+      <span class="sep">·</span>
+      <span class="mono muted">{{ p.selected_model.architecture.modality }}</span>
+    {% endif %}
+  {% elif p.selected %}
+    <span class="warn">Модель {{ p.selected }} не найдена в списке OpenRouter.</span>
+  {% else %}
+    <span class="muted">Используется модель из .env: {{ p.default_model }}</span>
+  {% endif %}
+</div>

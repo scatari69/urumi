@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% set active = 'profiles' %}
+{% block title %}Профили — urumi{% endblock %}
+
+{% block content %}
+<h1>Профили</h1>
+<div class="panel">
+  {% include "_profiles_list.html" %}
+</div>
+{% endblock %}

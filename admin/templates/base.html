@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Urumi{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <nav class="nav">
+    <span class="brand">urumi</span>
+    <a href="/" {% if active == 'dashboard' %}class="on"{% endif %}>Дашборд</a>
+    <a href="/settings" {% if active == 'settings' %}class="on"{% endif %}>Настройки</a>
+    <a href="/messages" {% if active == 'messages' %}class="on"{% endif %}>Сообщения</a>
+    <a href="/moods" {% if active == 'moods' %}class="on"{% endif %}>Настроения</a>
+    <a href="/profiles" {% if active == 'profiles' %}class="on"{% endif %}>Профили</a>
+    <a href="/summaries" {% if active == 'summaries' %}class="on"{% endif %}>Пересказы</a>
+    <a class="right" href="/logout">Выйти</a>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

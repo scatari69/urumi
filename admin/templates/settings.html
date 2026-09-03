@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% set active = 'settings' %}
+{% block title %}Настройки — urumi{% endblock %}
+
+{% block content %}
+<h1>Настройки</h1>
+<div class="panel">
+  {% include "_settings_form.html" %}
+</div>
+{% endblock %}

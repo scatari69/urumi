@@ -1,0 +1,40 @@
+<div class="model-field">
+  <span class="lbl">{{ p.field }}</span>
+  <span class="hint">{{ p.hint }}</span>
+
+  <div id="controls-{{ p.field }}" class="model-controls">
+    <input type="search" name="q" value="{{ p.q }}" placeholder="поиск по id или названию"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();}"
+           hx-get="/settings/models"
+           hx-trigger="input changed delay:300ms, search"
+           hx-target="#picker-{{ p.field }}"
+           hx-swap="outerHTML"
+           hx-include="#controls-{{ p.field }}, [name='{{ p.field }}']"
+           hx-vals='{"field": "{{ p.field }}"}'>
+    <label class="check">
+      <input type="checkbox" name="free_only" value="1" {% if p.free_only %}checked{% endif %}
+             hx-get="/settings/models"
+             hx-trigger="change"
+             hx-target="#picker-{{ p.field }}"
+             hx-swap="outerHTML"
+             hx-include="#controls-{{ p.field }}, [name='{{ p.field }}']"
+             hx-vals='{"field": "{{ p.field }}"}'>
+      <span>только бесплатные</span>
+    </label>
+    <button type="button" class="ghost small"
+            hx-post="/settings/models/refresh"
+            hx-target="#picker-{{ p.field }}"
+            hx-swap="outerHTML"
+            hx-include="#controls-{{ p.field }}, [name='{{ p.field }}']"
+            hx-vals='{"field": "{{ p.field }}"}'>Обновить список</button>
+    <button type="button" class="ghost small"
+            hx-post="/settings/models/test"
+            hx-target="#test-{{ p.field }}"
+            hx-swap="outerHTML"
+            hx-include="[name='{{ p.field }}']"
+            hx-vals='{"field": "{{ p.field }}"}'>Тест</button>
+  </div>
+
+  {% include "_model_picker.html" %}
+  <div id="test-{{ p.field }}"></div>
+</div>

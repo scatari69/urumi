@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% set active = 'dashboard' %}
+{% block title %}Дашборд — urumi{% endblock %}
+
+{% block content %}
+<h1>Дашборд</h1>
+
+<div class="cards">
+  <div class="card">
+    <div class="k">Сообщений за 24 ч</div>
+    <div class="v">{{ message_count }}</div>
+  </div>
+  <div class="card">
+    <div class="k">Всего в базе</div>
+    <div class="v">{{ total_messages }}</div>
+  </div>
+  <div class="card">
+    <div class="k">Профилей</div>
+    <div class="v">{{ profile_count }}</div>
+  </div>
+  <div class="card">
+    <div class="k">Настроение</div>
+    <div class="v">{{ mood.name if mood else '—' }}</div>
+  </div>
+  <div class="card">
+    <div class="k">Бот</div>
+    <div class="v {{ 'ok' if enabled else 'err' }}">{{ 'вкл' if enabled else 'выкл' }}</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Состояние LLM</h2>
+  <table>
+    <tbody>
+      {% for label, model_id in status.models %}
+      <tr><td class="muted">{{ label }}</td><td class="mono">{{ model_id }}</td></tr>
+      {% endfor %}
+      <tr><td class="muted">Последняя сработавшая</td>
+          <td>
+            {% if status.last_used_model %}
+              <span class="mono ok">{{ status.last_used_model }}</span>
+              <div class="muted">{{ status.last_used_at | ts }}</div>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td></tr>
+      <tr><td class="muted">Клиент</td>
+          <td class="{{ 'ok' if status.started else 'warn' }}">{{ 'запущен' if status.started else 'не запущен' }}</td></tr>
+      <tr><td class="muted">Запросов</td><td class="num">{{ status.request_count }}</td></tr>
+      <tr><td class="muted">Ошибок</td>
+          <td class="num {{ 'err' if status.error_count else '' }}">{{ status.error_count }}</td></tr>
+      <tr><td class="muted">Последний запрос</td><td class="when">{{ status.last_request_at | ts }}</td></tr>
+      <tr><td class="muted">Последняя ошибка</td>
+          <td>
+            {% if status.last_error %}
+              <span class="err mono">{{ status.last_error }}</span>
+              <div class="muted">{{ status.last_error_at | ts }}</div>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Последние смены настроения</h2>
+  {% if switches %}
+  <table>
+    <thead><tr><th>Когда</th><th>Кто</th><th>Откуда</th><th>Куда</th><th>Источник</th></tr></thead>
+    <tbody>
+      {% for s in switches %}
+      <tr>
+        <td class="when">{{ s.ts | ts }}</td>
+        <td>{{ s.display_name or '—' }}{% if s.user_id %}<div class="mono muted">{{ s.user_id }}</div>{% endif %}</td>
+        <td class="mono muted">{{ s.from_mood or '—' }}</td>
+        <td class="mono">{{ s.to_mood }}</td>
+        <td class="muted">{{ s.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Настроение ещё не переключали.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Топ-10 активных за 24 ч</h2>
+  {% if top_users %}
+  <table>
+    <thead><tr><th>Участник</th><th>user_id</th><th class="num">Сообщений</th></tr></thead>
+    <tbody>
+      {% for user_id, display_name, n in top_users %}
+      <tr>
+        <td>{{ display_name or '—' }}</td>
+        <td class="mono muted">{{ user_id }}</td>
+        <td class="num">{{ n }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">За последние сутки сообщений нет.</p>
+  {% endif %}
+</div>
+{% endblock %}

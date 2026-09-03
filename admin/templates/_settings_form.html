@@ -1,0 +1,74 @@
+<form id="settings-form" hx-post="/settings" hx-target="#settings-form" hx-swap="outerHTML">
+  {% if saved %}<div class="flash ok">Сохранено. Кэш настроек сброшен.</div>{% endif %}
+
+  <label>
+    <span class="lbl">system_prompt</span>
+    <textarea name="system_prompt" rows="5">{{ values.get('system_prompt', '') }}</textarea>
+    <span class="hint">Базовый промпт. Используется и в чате, и в пересказах, и в профилях.</span>
+  </label>
+
+  <label>
+    <span class="lbl">summary_prompt</span>
+    <textarea name="summary_prompt" rows="4">{{ values.get('summary_prompt', '') }}</textarea>
+    <span class="hint">Пусто — берётся значение по умолчанию.</span>
+  </label>
+
+  {% for p in pickers %}
+    {% include "_model_field.html" %}
+  {% endfor %}
+
+  <label>
+    <span class="lbl">fallback_models</span>
+    <input type="text" name="fallback_models" value="{{ values.get('fallback_models', '') }}"
+           placeholder="vendor/model-a, vendor/model-b">
+    <span class="hint">
+      Список id через запятую. Пробуются по порядку, если основная модель отдала
+      402/403 (лимит) или 404 (модель пропала).
+      {% if status.last_used_model %}
+        Последняя сработавшая модель:
+        <b class="mono ok">{{ status.last_used_model }}</b> ({{ status.last_used_at | ts }}).
+      {% else %}
+        Успешных запросов ещё не было.
+      {% endif %}
+    </span>
+  </label>
+
+  <label>
+    <span class="lbl">temperature</span>
+    <input type="text" name="temperature" value="{{ values.get('temperature', '') }}" placeholder="0.7">
+  </label>
+
+  <div class="row">
+    <label>
+      <span class="lbl">context_messages</span>
+      <input type="text" name="context_messages" value="{{ values.get('context_messages', '') }}" placeholder="30">
+      <span class="hint">Сколько сообщений истории уходит в контекст.</span>
+    </label>
+    <label>
+      <span class="lbl">random_reply_chance</span>
+      <input type="text" name="random_reply_chance" value="{{ values.get('random_reply_chance', '') }}" placeholder="0">
+      <span class="hint">0 — отвечать только на упоминания и реплаи.</span>
+    </label>
+  </div>
+
+  <div class="row">
+    <label class="check">
+      <input type="checkbox" name="mood_admin_only" value="1"
+             {% if (values.get('mood_admin_only', '0') | lower) in ['1', 'true', 'on', 'yes'] %}checked{% endif %}>
+      <span class="lbl">mood_admin_only — /mood только для админов</span>
+    </label>
+    <label>
+      <span class="lbl">mood_ttl_minutes</span>
+      <input type="text" name="mood_ttl_minutes" value="{{ values.get('mood_ttl_minutes', '') }}" placeholder="0">
+      <span class="hint">0 — автосброс настроения выключен.</span>
+    </label>
+  </div>
+
+  <label class="check">
+    <input type="checkbox" name="enabled" value="1"
+           {% if (values.get('enabled', '1') | lower) in ['1', 'true', 'on', 'yes'] %}checked{% endif %}>
+    <span class="lbl">enabled — бот отвечает в чате</span>
+  </label>
+
+  <button type="submit">Сохранить</button>
+</form>

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% set active = 'moods' %}
+{% block title %}Настроения — urumi{% endblock %}
+
+{% block content %}
+<h1>Настроения</h1>
+<div class="panel">
+  {% include "_moods_list.html" %}
+</div>
+{% endblock %}

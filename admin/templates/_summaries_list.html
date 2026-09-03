@@ -1,0 +1,24 @@
+<div id="summaries-list">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+  {% if rows %}
+  <table>
+    <thead>
+      <tr><th>Создан</th><th>Период</th><th>Текст</th></tr>
+    </thead>
+    <tbody>
+      {% for id, period_start, period_end, text, created_at in rows %}
+      <tr>
+        <td class="when">{{ created_at | ts }}</td>
+        <td class="when muted">
+          {{ period_start | ts }}<br>— {{ period_end | ts }}
+        </td>
+        <td class="text">{{ text }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Пересказов пока нет.</p>
+  {% endif %}
+</div>

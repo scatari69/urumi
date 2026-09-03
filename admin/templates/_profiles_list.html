@@ -1,0 +1,49 @@
+<div id="profiles-list">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+  {% if rows %}
+  <table>
+    <thead>
+      <tr><th>Участник</th><th>Заметка</th><th>Обновлено</th><th>Действия</th></tr>
+    </thead>
+    <tbody>
+      {% for user_id, display_name, notes, updated_at, opted_out in rows %}
+      <tr>
+        <td>
+          {{ display_name or '—' }}
+          <div class="mono muted">{{ user_id }}</div>
+          {% if opted_out %}<div class="warn">opt-out</div>{% endif %}
+        </td>
+        <td>
+          <form hx-post="/profiles/{{ user_id }}/notes" hx-target="#profiles-list" hx-swap="outerHTML">
+            <textarea name="notes" rows="4" {% if opted_out %}disabled{% endif %}>{{ notes or '' }}</textarea>
+            {% if not opted_out %}
+            <button type="submit" class="small ghost">Сохранить</button>
+            {% else %}
+            <span class="muted">Участник отказался от профилирования.</span>
+            {% endif %}
+          </form>
+        </td>
+        <td class="when">{{ updated_at | ts }}</td>
+        <td>
+          <div class="actions">
+            {% if not opted_out %}
+            <button class="small ghost"
+                    hx-post="/profiles/{{ user_id }}/rebuild"
+                    hx-target="#profiles-list" hx-swap="outerHTML"
+                    hx-indicator="#profiles-list">Перестроить</button>
+            {% endif %}
+            <button class="small danger"
+                    hx-post="/profiles/{{ user_id }}/delete"
+                    hx-target="#profiles-list" hx-swap="outerHTML"
+                    hx-confirm="Удалить профиль {{ display_name or user_id }}?">Удалить</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Профилей пока нет.</p>
+  {% endif %}
+</div>
