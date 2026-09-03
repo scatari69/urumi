@@ -1,8 +1,9 @@
 from aiogram import Router
 
-from bot.handlers import chat, common, logger, mood, profile, summary
+from bot.handlers import chat, common, logger, membership, mood, profile, summary
 
 router = Router(name="root")
+router.include_router(membership.router)
 router.include_router(logger.router)
 router.include_router(summary.router)
 router.include_router(profile.router)

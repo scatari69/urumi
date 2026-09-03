@@ -2,7 +2,7 @@ import logging
 import time
 
 from core.config import settings
-from core.db import get_db, get_settings, insert_summary, setting_value
+from core.db import get_chat_settings, get_db, insert_summary, setting_value
 from core.llm import llm_client, parse_fallbacks, resolve_model
 from core.prompts import base_system_prompt, summary_prompt
 
@@ -83,7 +83,7 @@ async def generate_summary(chat_id: int, hours: int) -> str:
     if len(rows) < MIN_MESSAGES:
         raise NotEnoughMessages(len(rows))
 
-    values = await get_settings()
+    values = await get_chat_settings(chat_id)
     system_content = base_system_prompt(values)
     prompt = summary_prompt(values)
     temperature = setting_value(values, "temperature", DEFAULT_TEMPERATURE, float)

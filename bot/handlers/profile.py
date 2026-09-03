@@ -5,6 +5,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from bot.filters import ActiveChat
 from core.config import settings
 from core.profiles import get_profile, opt_out
 
@@ -19,7 +20,7 @@ FORGET_DONE_MESSAGE = "Заметка удалена. Профиль для те
 
 
 @router.message(
-    F.chat.id == settings.GROUP_CHAT_ID,
+    ActiveChat(),
     Command("profile"),
     F.from_user.id.in_(settings.ADMIN_USER_IDS),
 )
@@ -46,7 +47,7 @@ async def show_profile(message: Message) -> None:
     await message.reply(html.escape(f"{header}\n{notes}", quote=False), parse_mode="HTML")
 
 
-@router.message(F.chat.id == settings.GROUP_CHAT_ID, Command("forgetme"))
+@router.message(ActiveChat(), Command("forgetme"))
 async def forget_me(message: Message) -> None:
     if message.from_user is None:
         return

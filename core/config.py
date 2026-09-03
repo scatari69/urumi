@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     OPENROUTER_API_KEY: str
     MODEL: str = "google/gemma-3-27b-it:free"
-    GROUP_CHAT_ID: int
+    # Only a one-time bootstrap seed for the first chat on first run — after that,
+    # which chats the bot serves is managed entirely via the admin panel's /chats page.
+    GROUP_CHAT_ID: int | None = None
     ADMIN_USER_IDS: list[int] = []
     ADMIN_PASSWORD: str
     DB_PATH: str = "data/urumi.db"

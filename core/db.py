@@ -72,9 +72,34 @@ SCHEMA = [
         ts INTEGER NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS chats (
+        chat_id INTEGER PRIMARY KEY,
+        title TEXT,
+        active INTEGER NOT NULL DEFAULT 0,
+        added_at INTEGER NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chat_settings (
+        chat_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT,
+        PRIMARY KEY (chat_id, key)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_messages_chat_ts ON messages (chat_id, ts)",
     "CREATE INDEX IF NOT EXISTS idx_messages_user ON messages (user_id)",
 ]
+
+# Every per-chat config key except models_cache, which is OpenRouter's shared model
+# catalog — infrastructure, not something tuned per chat.
+LEGACY_CHAT_SETTING_KEYS = (
+    "system_prompt", "summary_prompt", "profile_prompt",
+    "chat_model", "summary_model", "profile_model", "fallback_models",
+    "temperature", "context_messages", "random_reply_chance", "enabled",
+    "mood_admin_only", "mood_ttl_minutes", "current_mood",
+)
 
 # Fragments are modifiers layered on top of the base prompt, not replacement personas.
 SEED_MOODS = [
@@ -163,9 +188,47 @@ async def init_db() -> None:
         if cursor.rowcount > 0:
             logger.info("Seeded %d mood(s)", cursor.rowcount)
 
+        await _bootstrap_first_chat(db)
+
         await db.commit()
 
     logger.info("Database initialized at %s", settings.DB_PATH)
+
+
+async def _bootstrap_first_chat(db: aiosqlite.Connection) -> None:
+    """One-time upgrade path: before multi-chat support, GROUP_CHAT_ID was the only
+    chat and its config lived in the global `settings` table. Runs only while `chats`
+    is empty, so it's a no-op on every later start and never touches chats added
+    afterward through the admin panel."""
+    cursor = await db.execute("SELECT COUNT(*) FROM chats")
+    (count,) = await cursor.fetchone()
+    if count > 0 or settings.GROUP_CHAT_ID is None:
+        return
+
+    await db.execute(
+        "INSERT INTO chats (chat_id, title, active, added_at) VALUES (?, NULL, 1, ?)",
+        (settings.GROUP_CHAT_ID, int(time.time())),
+    )
+
+    cursor = await db.execute(
+        f"SELECT key, value FROM settings WHERE key IN "
+        f"({','.join('?' for _ in LEGACY_CHAT_SETTING_KEYS)})",
+        LEGACY_CHAT_SETTING_KEYS,
+    )
+    rows = await cursor.fetchall()
+    if rows:
+        await db.executemany(
+            "INSERT OR IGNORE INTO chat_settings (chat_id, key, value) VALUES (?, ?, ?)",
+            [(settings.GROUP_CHAT_ID, key, value) for key, value in rows],
+        )
+        await db.executemany(
+            "DELETE FROM settings WHERE key = ?", [(key,) for key, _ in rows]
+        )
+
+    logger.info(
+        "Bootstrapped chat %d from legacy single-chat settings (%d key(s) carried over)",
+        settings.GROUP_CHAT_ID, len(rows),
+    )
 
 
 def get_db() -> aiosqlite.Connection:
@@ -288,6 +351,153 @@ async def save_settings(values: dict[str, str]) -> None:
         await db.commit()
 
     invalidate_settings_cache()
+
+
+# --- Per-chat settings: same shape as the global settings table above, but every
+# chat the bot serves gets its own independent set of keys (system_prompt, models,
+# mood, ...). Only models_cache stays in the global table — it's OpenRouter's shared
+# catalog, not something a chat owner tunes.
+
+async def load_chat_settings(chat_id: int) -> dict[str, str]:
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT key, value FROM chat_settings WHERE chat_id = ?", (chat_id,)
+        )
+        rows = await cursor.fetchall()
+    return {key: value for key, value in rows}
+
+
+async def set_chat_setting(chat_id: int, key: str, value: str) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO chat_settings (chat_id, key, value) VALUES (?, ?, ?) "
+            "ON CONFLICT(chat_id, key) DO UPDATE SET value = excluded.value",
+            (chat_id, key, value),
+        )
+        await db.commit()
+    invalidate_chat_settings_cache(chat_id)
+
+
+async def delete_chat_setting(chat_id: int, key: str) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM chat_settings WHERE chat_id = ? AND key = ?", (chat_id, key)
+        )
+        await db.commit()
+    invalidate_chat_settings_cache(chat_id)
+
+
+async def save_chat_settings(chat_id: int, values: dict[str, str]) -> None:
+    async with get_db() as db:
+        await db.executemany(
+            "INSERT INTO chat_settings (chat_id, key, value) VALUES (?, ?, ?) "
+            "ON CONFLICT(chat_id, key) DO UPDATE SET value = excluded.value",
+            [(chat_id, key, value) for key, value in values.items()],
+        )
+        await db.commit()
+    invalidate_chat_settings_cache(chat_id)
+
+
+_chat_settings_cache: dict[int, dict[str, str]] = {}
+_chat_settings_cached_at: dict[int, float] = {}
+
+
+async def get_chat_settings(chat_id: int) -> dict[str, str]:
+    """Same 30s TTL cache as get_settings(), kept per chat."""
+    now = time.monotonic()
+    cached_at = _chat_settings_cached_at.get(chat_id, 0.0)
+    if chat_id not in _chat_settings_cache or now - cached_at >= SETTINGS_CACHE_TTL_SECONDS:
+        _chat_settings_cache[chat_id] = await load_chat_settings(chat_id)
+        _chat_settings_cached_at[chat_id] = now
+    return _chat_settings_cache[chat_id]
+
+
+def invalidate_chat_settings_cache(chat_id: int) -> None:
+    _chat_settings_cache.pop(chat_id, None)
+    _chat_settings_cached_at.pop(chat_id, None)
+
+
+# --- Chats: which groups the bot is allowed to act in. A row is created (inactive)
+# the moment the bot is added to a group; it only starts logging/replying/etc. there
+# once an admin flips it active from the /chats page.
+
+async def list_chats() -> list[dict]:
+    async with get_db() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT chat_id, title, active, added_at FROM chats ORDER BY active DESC, added_at DESC"
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_chat(chat_id: int) -> dict | None:
+    async with get_db() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT chat_id, title, active, added_at FROM chats WHERE chat_id = ?", (chat_id,)
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def register_chat(chat_id: int, title: str | None) -> None:
+    """Upsert seen when the bot is added to (or already sees messages in) a chat.
+    Leaves `active` alone for a chat that's already known, so this can't silently
+    reactivate one an admin deliberately turned off."""
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO chats (chat_id, title, active, added_at) VALUES (?, ?, 0, ?) "
+            "ON CONFLICT(chat_id) DO UPDATE SET title = excluded.title",
+            (chat_id, title, int(time.time())),
+        )
+        await db.commit()
+    invalidate_active_chats_cache()
+
+
+async def set_chat_active(chat_id: int, active: bool) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE chats SET active = ? WHERE chat_id = ?", (1 if active else 0, chat_id)
+        )
+        await db.commit()
+    invalidate_active_chats_cache()
+
+
+async def delete_chat(chat_id: int) -> None:
+    async with get_db() as db:
+        await db.execute("DELETE FROM chats WHERE chat_id = ?", (chat_id,))
+        await db.execute("DELETE FROM chat_settings WHERE chat_id = ?", (chat_id,))
+        await db.commit()
+    invalidate_active_chats_cache()
+    invalidate_chat_settings_cache(chat_id)
+
+
+ACTIVE_CHATS_CACHE_TTL_SECONDS = 30.0
+
+_active_chat_ids_cache: set[int] | None = None
+_active_chat_ids_cached_at: float = 0.0
+
+
+async def get_active_chat_ids() -> set[int]:
+    """Checked on every incoming update, so it gets the same short TTL cache as
+    settings rather than a query per message."""
+    global _active_chat_ids_cache, _active_chat_ids_cached_at
+
+    now = time.monotonic()
+    if _active_chat_ids_cache is None or now - _active_chat_ids_cached_at >= ACTIVE_CHATS_CACHE_TTL_SECONDS:
+        async with get_db() as db:
+            cursor = await db.execute("SELECT chat_id FROM chats WHERE active = 1")
+            rows = await cursor.fetchall()
+        _active_chat_ids_cache = {row[0] for row in rows}
+        _active_chat_ids_cached_at = now
+
+    return _active_chat_ids_cache
+
+
+def invalidate_active_chats_cache() -> None:
+    global _active_chat_ids_cache, _active_chat_ids_cached_at
+    _active_chat_ids_cache = None
+    _active_chat_ids_cached_at = 0.0
 
 
 def setting_bool(values: dict[str, str], key: str, default: bool) -> bool:

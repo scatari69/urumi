@@ -8,9 +8,9 @@ import httpx
 from aiogram import Bot, F, Router
 from aiogram.types import Message, User
 
+from bot.filters import ActiveChat
 from bot.handlers.logger import PHOTO_PLACEHOLDER
-from core.config import settings
-from core.db import get_db, get_settings, insert_message, setting_bool, setting_value
+from core.db import get_chat_settings, get_db, insert_message, setting_bool, setting_value
 from core.llm import (
     LLMQuotaError,
     LLMUnavailableError,
@@ -154,12 +154,12 @@ async def _download_photo(bot: Bot, message: Message) -> bytes | None:
     return None
 
 
-@router.message(F.chat.id == settings.GROUP_CHAT_ID, F.text | F.photo)
+@router.message(ActiveChat(), F.text | F.photo)
 async def reply_in_chat(message: Message, bot: Bot) -> None:
     if message.from_user is None:
         return
 
-    values = await get_settings()
+    values = await get_chat_settings(message.chat.id)
     if not setting_bool(values, "enabled", True):
         return
 

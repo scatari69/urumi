@@ -2,10 +2,11 @@ import html
 import logging
 
 import httpx
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
+from bot.filters import ActiveChat
 from core.config import settings
 from core.llm import LLMQuotaError, LLMUnavailableError
 from core.summaries import NotEnoughMessages, generate_summary
@@ -54,7 +55,7 @@ def _split_for_telegram(text: str, limit: int = SPLIT_CHAR_LIMIT) -> list[str]:
     return parts
 
 
-@router.message(F.chat.id == settings.GROUP_CHAT_ID, Command("summary"))
+@router.message(ActiveChat(), Command("summary"))
 async def summarize_chat(message: Message, command: CommandObject) -> None:
     hours = _parse_hours(command.args)
     if hours is None:

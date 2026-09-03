@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% set active = 'chats' %}
+{% block title %}Чаты — urumi{% endblock %}
+
+{% block content %}
+<h1>Чаты</h1>
+<p class="hint">
+  Бот заносит сюда любую группу, куда его добавили, но ничего не делает там, пока
+  чат не активирован. У каждого активного чата — свои промпты, модели и настроение.
+</p>
+<div class="panel">
+  {% include "_chats_list.html" %}
+</div>
+{% endblock %}

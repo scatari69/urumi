@@ -8,7 +8,7 @@
     <span class="hint">Пусто — {{ p.default_model }} из .env</span>
   {% else %}
     <select name="{{ p.field }}" size="1"
-            hx-get="/settings/models/info"
+            hx-get="/c/{{ p.chat_id }}/settings/models/info"
             hx-trigger="change"
             hx-target="#info-{{ p.field }}"
             hx-swap="outerHTML"

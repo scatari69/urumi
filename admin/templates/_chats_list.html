@@ -1,0 +1,54 @@
+<div id="chats-list">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+  {% if chats %}
+  <table>
+    <thead>
+      <tr><th>Чат</th><th>chat_id</th><th>Статус</th><th>Добавлен</th><th>Действия</th></tr>
+    </thead>
+    <tbody>
+      {% for c in chats %}
+      <tr>
+        <td><a href="/c/{{ c.chat_id }}/">{{ c.title or '—' }}</a></td>
+        <td class="mono muted">{{ c.chat_id }}</td>
+        <td class="{{ 'ok' if c.active else 'warn' }}">{{ 'активен' if c.active else 'ожидает' }}</td>
+        <td class="when">{{ c.added_at | ts }}</td>
+        <td>
+          <div class="actions">
+            {% if c.active %}
+            <button class="small ghost"
+                    hx-post="/chats/{{ c.chat_id }}/deactivate"
+                    hx-target="#chats-list" hx-swap="outerHTML">Деактивировать</button>
+            {% else %}
+            <button class="small"
+                    hx-post="/chats/{{ c.chat_id }}/activate"
+                    hx-target="#chats-list" hx-swap="outerHTML">Активировать</button>
+            {% endif %}
+            <button class="small danger"
+                    hx-post="/chats/{{ c.chat_id }}/delete"
+                    hx-target="#chats-list" hx-swap="outerHTML"
+                    hx-confirm="Удалить чат {{ c.title or c.chat_id }} из списка? Настройки чата будут стёрты, история — нет.">Удалить</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Бот пока ни в одной группе. Добавьте его в группу (с выключенным
+    privacy mode) — она появится здесь сама.</p>
+  {% endif %}
+
+  <form class="filters add-item" hx-post="/chats/add" hx-target="#chats-list" hx-swap="outerHTML">
+    <label>
+      <span class="lbl">chat_id вручную</span>
+      <input type="text" name="chat_id" placeholder="-1001234567890">
+    </label>
+    <label>
+      <span class="lbl">Название (необязательно)</span>
+      <input type="text" name="title" placeholder="для удобства в списке">
+    </label>
+    <button type="submit">Добавить и активировать</button>
+    <span class="muted">На случай, если чат не подхватился автоматически.</span>
+  </form>
+</div>

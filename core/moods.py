@@ -4,7 +4,7 @@ import time
 
 import aiosqlite
 
-from core.db import get_db, get_settings, set_setting, setting_value
+from core.db import get_active_chat_ids, get_chat_settings, get_db, set_chat_setting, setting_value
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,8 @@ def mood_temperature(mood: dict | None, fallback: float) -> float:
     return float(value) if value is not None else fallback
 
 
-async def set_current(name: str) -> None:
-    await set_setting(CURRENT_MOOD_KEY, name)
+async def set_current(chat_id: int, name: str) -> None:
+    await set_chat_setting(chat_id, CURRENT_MOOD_KEY, name)
 
 
 async def log_switch(
@@ -104,17 +104,25 @@ async def log_switch(
     )
 
 
-async def recent_switches(limit: int = 10) -> list[dict]:
+async def recent_switches(chat_id: int, limit: int = 10) -> list[dict]:
     return await _query(
         "SELECT user_id, display_name, from_mood, to_mood, source, ts "
-        "FROM mood_switches ORDER BY id DESC LIMIT ?",
-        (limit,),
+        "FROM mood_switches WHERE chat_id = ? ORDER BY id DESC LIMIT ?",
+        (chat_id, limit),
     )
 
 
-async def last_switch_ts() -> int | None:
-    rows = await _query("SELECT MAX(ts) AS ts FROM mood_switches")
+async def last_switch_ts(chat_id: int) -> int | None:
+    rows = await _query("SELECT MAX(ts) AS ts FROM mood_switches WHERE chat_id = ?", (chat_id,))
     return rows[0]["ts"] if rows and rows[0]["ts"] is not None else None
+
+
+async def chats_with_current_mood(name: str) -> list[int]:
+    rows = await _query(
+        "SELECT chat_id FROM chat_settings WHERE key = ? AND value = ?",
+        (CURRENT_MOOD_KEY, name),
+    )
+    return [row["chat_id"] for row in rows]
 
 
 async def trim_switch_log(keep: int = SWITCH_LOG_KEEP) -> None:
@@ -165,13 +173,15 @@ async def delete_mood(name: str) -> None:
         await db.execute("DELETE FROM moods WHERE name = ?", (name,))
         await db.commit()
 
-    # Nothing should stay pointed at a mood that no longer exists.
-    values = await get_settings()
-    if values.get(CURRENT_MOOD_KEY) == name:
-        fallback = await get_default_mood()
-        if fallback is not None:
-            await set_current(fallback["name"])
-            logger.info("Active mood %s was deleted, reverted to %s", name, fallback["name"])
+    # Nothing should stay pointed at a mood that no longer exists, in any chat.
+    fallback = await get_default_mood()
+    if fallback is None:
+        return
+    for chat_id in await chats_with_current_mood(name):
+        await set_current(chat_id, fallback["name"])
+        logger.info(
+            "Active mood %s was deleted, reverted chat %s to %s", name, chat_id, fallback["name"]
+        )
 
 
 async def set_default(name: str) -> None:
@@ -185,38 +195,44 @@ async def revert_to_default(chat_id: int, from_mood: str | None, source: str = S
     default = await get_default_mood()
     if default is None:
         return None
-    await set_current(default["name"])
+    await set_current(chat_id, default["name"])
     await log_switch(chat_id, None, None, from_mood, default["name"], source)
     return default["name"]
 
 
-async def mood_ttl_task(chat_id: int) -> None:
-    """Revert to the default mood after mood_ttl_minutes of no switching (0 = off)."""
+async def _check_ttl_for_chat(chat_id: int) -> None:
+    values = await get_chat_settings(chat_id)
+    ttl_minutes = setting_value(values, TTL_MINUTES_KEY, 0, int)
+    if ttl_minutes <= 0:
+        return
+
+    current = await resolve_current(values)
+    default = await get_default_mood()
+    if current is None or default is None or current["name"] == default["name"]:
+        return
+
+    changed_at = await last_switch_ts(chat_id)
+    if changed_at is None:
+        return
+
+    idle_seconds = int(time.time()) - changed_at
+    if idle_seconds < ttl_minutes * 60:
+        return
+
+    await revert_to_default(chat_id, current["name"])
+    logger.info(
+        "Mood %s expired after %d min idle in chat %s, reverted to %s",
+        current["name"], ttl_minutes, chat_id, default["name"],
+    )
+
+
+async def mood_ttl_task() -> None:
+    """Revert each active chat to its default mood after mood_ttl_minutes of no
+    switching there (0 = off). One shared timer for every chat, checked in turn."""
     while True:
         await asyncio.sleep(TTL_CHECK_INTERVAL_SECONDS)
-        try:
-            values = await get_settings()
-            ttl_minutes = setting_value(values, TTL_MINUTES_KEY, 0, int)
-            if ttl_minutes <= 0:
-                continue
-
-            current = await resolve_current(values)
-            default = await get_default_mood()
-            if current is None or default is None or current["name"] == default["name"]:
-                continue
-
-            changed_at = await last_switch_ts()
-            if changed_at is None:
-                continue
-
-            idle_seconds = int(time.time()) - changed_at
-            if idle_seconds < ttl_minutes * 60:
-                continue
-
-            await revert_to_default(chat_id, current["name"])
-            logger.info(
-                "Mood %s expired after %d min idle, reverted to %s",
-                current["name"], ttl_minutes, default["name"],
-            )
-        except Exception:
-            logger.exception("Mood TTL check failed")
+        for chat_id in await get_active_chat_ids():
+            try:
+                await _check_ttl_for_chat(chat_id)
+            except Exception:
+                logger.exception("Mood TTL check failed for chat %s", chat_id)

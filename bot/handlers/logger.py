@@ -5,7 +5,7 @@ from aiogram import F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message
 
-from core.config import settings
+from bot.filters import ActiveChat
 from core.db import insert_message
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ router = Router(name="logger")
 PHOTO_PLACEHOLDER = "[фото]"
 
 
-@router.message(F.chat.id == settings.GROUP_CHAT_ID, F.text | F.photo)
+@router.message(ActiveChat(), F.text | F.photo)
 async def log_message(message: Message) -> None:
     if message.from_user is None:
         raise SkipHandler

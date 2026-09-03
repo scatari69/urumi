@@ -1,6 +1,7 @@
 # Project
-Telegram bot for a single group. Python 3.12, aiogram 3.x, aiosqlite, FastAPI + Jinja2 + htmx for the admin panel.
-LLM access via OpenRouter (OpenAI-compatible endpoint), model id read from settings, default google/gemma-3-27b-it:free.
+Telegram bot, one instance serves multiple groups (see /chats in the admin panel) — each with independent
+prompts/models/mood/history. Python 3.12, aiogram 3.x, aiosqlite, FastAPI + Jinja2 + htmx for the admin panel.
+LLM access via OpenRouter (OpenAI-compatible endpoint), model id read from per-chat settings, default google/gemma-3-27b-it:free.
 
 # Rules
 - Config only via pydantic-settings + .env. Never hardcode tokens.

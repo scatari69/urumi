@@ -5,7 +5,7 @@ import time
 import httpx
 
 from core.config import settings
-from core.db import get_db, get_settings, setting_value
+from core.db import get_active_chat_ids, get_chat_settings, get_db, setting_value
 from core.llm import LLMQuotaError, LLMUnavailableError, llm_client, parse_fallbacks, resolve_model
 from core.prompts import base_system_prompt, profile_prompt
 
@@ -177,22 +177,28 @@ async def update_profile(
 
 
 async def run_profile_updates(bot_id: int) -> None:
-    chat_id = settings.GROUP_CHAT_ID
+    for chat_id in await get_active_chat_ids():
+        try:
+            await _run_profile_updates_for_chat(chat_id, bot_id)
+        except Exception:
+            logger.exception("Profile update: cycle failed for chat %s", chat_id)
+
+
+async def _run_profile_updates_for_chat(chat_id: int, bot_id: int) -> None:
     since_ts = int(time.time()) - PROFILE_INTERVAL_SECONDS
 
     candidates = await fetch_active_users(chat_id, since_ts, MIN_NEW_MESSAGES, bot_id)
     if not candidates:
-        logger.info("Profile update: nobody reached %d new messages", MIN_NEW_MESSAGES)
         return
 
-    values = await get_settings()
+    values = await get_chat_settings(chat_id)
     system_content = base_system_prompt(values)
     prompt = profile_prompt(values)
     temperature = setting_value(values, "temperature", DEFAULT_TEMPERATURE, float)
     model = resolve_model(values, "profile_model")
     fallbacks = parse_fallbacks(values)
 
-    logger.info("Profile update: %d candidate(s)", len(candidates))
+    logger.info("Profile update: chat %s, %d candidate(s)", chat_id, len(candidates))
 
     for user_id, count in candidates:
         try:
@@ -200,15 +206,18 @@ async def run_profile_updates(bot_id: int) -> None:
                 chat_id, user_id, since_ts, system_content, prompt, temperature, model, fallbacks
             )
         except LLMQuotaError:
-            logger.exception("Profile update: quota exhausted, stopping this cycle")
+            logger.exception("Profile update: quota exhausted for chat %s, stopping its cycle", chat_id)
             return
         except LLMUnavailableError:
-            logger.exception("Profile update: model still failing after retries, stopping this cycle")
+            logger.exception(
+                "Profile update: model still failing after retries for chat %s, stopping its cycle",
+                chat_id,
+            )
             return
         except httpx.TimeoutException:
-            logger.exception("Profile update: timed out for user %s, skipping", user_id)
+            logger.exception("Profile update: timed out for user %s in chat %s, skipping", user_id, chat_id)
         except Exception:
-            logger.exception("Profile update: failed for user %s", user_id)
+            logger.exception("Profile update: failed for user %s in chat %s", user_id, chat_id)
 
 
 async def list_profiles(chat_id: int) -> list[tuple[int, str | None, str | None, int, int]]:
@@ -238,7 +247,7 @@ async def rebuild_profile(chat_id: int, user_id: int, hours: int | None = None) 
     lookback = hours if hours is not None else settings.HISTORY_TTL_HOURS
     since_ts = int(time.time()) - lookback * 3600
 
-    values = await get_settings()
+    values = await get_chat_settings(chat_id)
     await update_profile(
         chat_id,
         user_id,

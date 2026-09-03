@@ -33,7 +33,7 @@
         </td>
         <td colspan="3">
           <form id="mood-form-{{ m.name }}"
-                hx-post="/moods/{{ m.name }}/save"
+                hx-post="/c/{{ chat_id }}/moods/{{ m.name }}/save"
                 hx-target="#moods-list" hx-swap="outerHTML">
             <input type="text" name="label" value="{{ m.label or '' }}" placeholder="подпись">
             <textarea name="prompt_fragment" rows="4"
@@ -45,7 +45,7 @@
                      step="10" placeholder="порядок">
               <button type="submit" class="small">Сохранить</button>
               <button type="button" class="small ghost"
-                      hx-post="/moods/{{ m.name }}/preview"
+                      hx-post="/c/{{ chat_id }}/moods/{{ m.name }}/preview"
                       hx-include="#mood-form-{{ m.name }} [name='prompt_fragment']"
                       hx-target="#moods-list" hx-swap="outerHTML">Предпросмотр</button>
             </div>
@@ -56,15 +56,15 @@
           <div class="actions">
             {% if m.name != current %}
             <button class="small"
-                    hx-post="/moods/{{ m.name }}/activate"
+                    hx-post="/c/{{ chat_id }}/moods/{{ m.name }}/activate"
                     hx-target="#moods-list" hx-swap="outerHTML">Включить</button>
             {% endif %}
             {% if not m.is_default %}
             <button class="small ghost"
-                    hx-post="/moods/{{ m.name }}/default"
+                    hx-post="/c/{{ chat_id }}/moods/{{ m.name }}/default"
                     hx-target="#moods-list" hx-swap="outerHTML">По умолчанию</button>
             <button class="small danger"
-                    hx-post="/moods/{{ m.name }}/delete"
+                    hx-post="/c/{{ chat_id }}/moods/{{ m.name }}/delete"
                     hx-target="#moods-list" hx-swap="outerHTML"
                     hx-confirm="Удалить настроение {{ m.name }}?">Удалить</button>
             {% else %}
@@ -80,7 +80,7 @@
   <p class="muted">Настроений пока нет.</p>
   {% endif %}
 
-  <form class="filters add-mood" hx-post="/moods/add" hx-target="#moods-list" hx-swap="outerHTML">
+  <form class="filters add-item" hx-post="/c/{{ chat_id }}/moods/add" hx-target="#moods-list" hx-swap="outerHTML">
     <label>
       <span class="lbl">Новое настроение</span>
       <input type="text" name="name" placeholder="имя латиницей, напр. grumpy">

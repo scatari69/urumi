@@ -10,12 +10,23 @@
 <body>
   <nav class="nav">
     <span class="brand">urumi</span>
-    <a href="/" {% if active == 'dashboard' %}class="on"{% endif %}>Дашборд</a>
-    <a href="/settings" {% if active == 'settings' %}class="on"{% endif %}>Настройки</a>
-    <a href="/messages" {% if active == 'messages' %}class="on"{% endif %}>Сообщения</a>
-    <a href="/moods" {% if active == 'moods' %}class="on"{% endif %}>Настроения</a>
-    <a href="/profiles" {% if active == 'profiles' %}class="on"{% endif %}>Профили</a>
-    <a href="/summaries" {% if active == 'summaries' %}class="on"{% endif %}>Пересказы</a>
+    {% if chat_id is defined %}
+    <select class="chat-switch" onchange="if(this.value) location.href=this.value">
+      {% for c in chats %}
+      <option value="/c/{{ c.chat_id }}/{{ active if active != 'dashboard' else '' }}"
+              {% if c.chat_id == chat_id %}selected{% endif %}>
+        {{ c.title or c.chat_id }}{% if not c.active %} (не активен){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <a href="/c/{{ chat_id }}/" {% if active == 'dashboard' %}class="on"{% endif %}>Дашборд</a>
+    <a href="/c/{{ chat_id }}/settings" {% if active == 'settings' %}class="on"{% endif %}>Настройки</a>
+    <a href="/c/{{ chat_id }}/messages" {% if active == 'messages' %}class="on"{% endif %}>Сообщения</a>
+    <a href="/c/{{ chat_id }}/moods" {% if active == 'moods' %}class="on"{% endif %}>Настроения</a>
+    <a href="/c/{{ chat_id }}/profiles" {% if active == 'profiles' %}class="on"{% endif %}>Профили</a>
+    <a href="/c/{{ chat_id }}/summaries" {% if active == 'summaries' %}class="on"{% endif %}>Пересказы</a>
+    {% endif %}
+    <a href="/chats" {% if active == 'chats' %}class="on"{% endif %}>Чаты</a>
     <a class="right" href="/logout">Выйти</a>
   </nav>
   <main>

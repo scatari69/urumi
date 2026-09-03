@@ -2,12 +2,13 @@ import html
 import logging
 import time
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
+from bot.filters import ActiveChat
 from core.config import settings
-from core.db import get_settings, setting_bool
+from core.db import get_chat_settings, setting_bool
 from core.moods import (SOURCE_CHAT, SWITCH_COOLDOWN_SECONDS, ADMIN_ONLY_KEY, get_mood,
                         get_default_mood, list_moods, log_switch, resolve_current, set_current)
 
@@ -35,14 +36,14 @@ def _names_line(moods: list[dict]) -> str:
     return ", ".join(m["name"] for m in moods)
 
 
-@router.message(F.chat.id == settings.GROUP_CHAT_ID, Command("mood"))
+@router.message(ActiveChat(), Command("mood"))
 async def mood_command(message: Message, command: CommandObject) -> None:
     moods = await list_moods()
     if not moods:
         await message.reply(NO_MOODS_MESSAGE)
         return
 
-    values = await get_settings()
+    values = await get_chat_settings(message.chat.id)
     current = await resolve_current(values)
     requested = (command.args or "").strip().split(" ")[0].strip().lower()
 
@@ -94,7 +95,7 @@ async def mood_command(message: Message, command: CommandObject) -> None:
     _last_switch_at[message.chat.id] = time.monotonic()
 
     previous = (current or {}).get("name")
-    await set_current(target["name"])
+    await set_current(message.chat.id, target["name"])
     await log_switch(
         message.chat.id,
         message.from_user.id if message.from_user else None,

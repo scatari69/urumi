@@ -5,7 +5,7 @@
 {% block content %}
 <h1>Сообщения <span class="muted">({{ total }})</span></h1>
 
-<form class="filters" method="get" action="/messages">
+<form class="filters" method="get" action="/c/{{ chat_id }}/messages">
   <label>
     <span class="lbl">Поиск по тексту</span>
     <input type="text" name="q" value="{{ q }}" placeholder="подстрока">
@@ -22,7 +22,7 @@
     </select>
   </label>
   <button type="submit">Фильтровать</button>
-  <a class="muted" href="/messages">сбросить</a>
+  <a class="muted" href="/c/{{ chat_id }}/messages">сбросить</a>
 </form>
 
 <div class="panel">
@@ -50,13 +50,13 @@
 
   <div class="pager">
     {% if page > 1 %}
-      <a href="/messages?q={{ q|urlencode }}&user_id={{ user_id|urlencode }}&page={{ page - 1 }}">← назад</a>
+      <a href="/c/{{ chat_id }}/messages?q={{ q|urlencode }}&user_id={{ user_id|urlencode }}&page={{ page - 1 }}">← назад</a>
     {% endif %}
     <span class="spacer"></span>
     <span class="muted">стр. {{ page }} из {{ pages }}</span>
     <span class="spacer"></span>
     {% if page < pages %}
-      <a href="/messages?q={{ q|urlencode }}&user_id={{ user_id|urlencode }}&page={{ page + 1 }}">вперёд →</a>
+      <a href="/c/{{ chat_id }}/messages?q={{ q|urlencode }}&user_id={{ user_id|urlencode }}&page={{ page + 1 }}">вперёд →</a>
     {% endif %}
   </div>
 </div>

@@ -10,7 +10,7 @@ from aiogram.types import BotCommand, BotCommandScopeChat
 from admin.app import app as admin_app
 from bot.handlers import router
 from core.config import settings
-from core.db import get_db, init_db
+from core.db import get_active_chat_ids, get_db, init_db
 from core.llm import llm_client
 from core.moods import mood_ttl_task, trim_switch_log
 from core.profiles import profiles_task
@@ -22,7 +22,6 @@ VACUUM_EVERY_N_CLEANUPS = 24
 # Must stay below the container's stop_grace_period, or Docker escalates to SIGKILL.
 SHUTDOWN_TIMEOUT_SECONDS = 10
 
-# Scoped to the group only — this bot serves a single group, not private chats.
 # /profile itself stays admin-only in the handler (bot/handlers/profile.py); listing
 # it here is just a menu entry, not a permission grant.
 COMMANDS = [
@@ -34,19 +33,25 @@ COMMANDS = [
 
 
 async def _register_commands(bot: Bot) -> None:
-    """Overwrites the command list for this chat — including leftovers from a previous
-    bot framework that BotFather's own UI can't reach, since commands live in separate
-    slots per (scope, language_code) and BotFather only edits the unscoped default.
+    """Overwrites the command list for every chat currently active on the /chats page
+    — including leftovers from a previous bot framework that BotFather's own UI can't
+    reach, since commands live in separate slots per (scope, language_code) and
+    BotFather only edits the unscoped default.
 
     Covers the common language_code variants too: a scoped-but-language-specific
     leftover would otherwise still win over our language-less entry for those clients.
+
+    Runs once at startup, so a chat activated later (from the admin panel, without a
+    restart) picks up the menu on the bot's next restart rather than immediately —
+    a cosmetic gap, not a functional one: the commands themselves work regardless.
     """
-    scope = BotCommandScopeChat(chat_id=settings.GROUP_CHAT_ID)
-    try:
-        for language_code in (None, "ru", "en"):
-            await bot.set_my_commands(COMMANDS, scope=scope, language_code=language_code)
-    except Exception:
-        logger.exception("Failed to register bot commands, continuing without it")
+    for chat_id in await get_active_chat_ids():
+        scope = BotCommandScopeChat(chat_id=chat_id)
+        try:
+            for language_code in (None, "ru", "en"):
+                await bot.set_my_commands(COMMANDS, scope=scope, language_code=language_code)
+        except Exception:
+            logger.exception("Failed to register bot commands for chat %s", chat_id)
 
 
 async def cleanup_task() -> None:
@@ -124,7 +129,7 @@ async def main() -> None:
     background = [
         asyncio.create_task(cleanup_task(), name="cleanup"),
         asyncio.create_task(profiles_task(bot.id), name="profiles"),
-        asyncio.create_task(mood_ttl_task(settings.GROUP_CHAT_ID), name="moods"),
+        asyncio.create_task(mood_ttl_task(), name="moods"),
     ]
     waiter = asyncio.create_task(stop.wait(), name="signal")
 

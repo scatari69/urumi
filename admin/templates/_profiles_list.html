@@ -15,7 +15,7 @@
           {% if opted_out %}<div class="warn">opt-out</div>{% endif %}
         </td>
         <td>
-          <form hx-post="/profiles/{{ user_id }}/notes" hx-target="#profiles-list" hx-swap="outerHTML">
+          <form hx-post="/c/{{ chat_id }}/profiles/{{ user_id }}/notes" hx-target="#profiles-list" hx-swap="outerHTML">
             <textarea name="notes" rows="4" {% if opted_out %}disabled{% endif %}>{{ notes or '' }}</textarea>
             {% if not opted_out %}
             <button type="submit" class="small ghost">Сохранить</button>
@@ -29,12 +29,12 @@
           <div class="actions">
             {% if not opted_out %}
             <button class="small ghost"
-                    hx-post="/profiles/{{ user_id }}/rebuild"
+                    hx-post="/c/{{ chat_id }}/profiles/{{ user_id }}/rebuild"
                     hx-target="#profiles-list" hx-swap="outerHTML"
                     hx-indicator="#profiles-list">Перестроить</button>
             {% endif %}
             <button class="small danger"
-                    hx-post="/profiles/{{ user_id }}/delete"
+                    hx-post="/c/{{ chat_id }}/profiles/{{ user_id }}/delete"
                     hx-target="#profiles-list" hx-swap="outerHTML"
                     hx-confirm="Удалить профиль {{ display_name or user_id }}?">Удалить</button>
           </div>

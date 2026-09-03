@@ -6,7 +6,7 @@
 <h1>Пересказы</h1>
 
 <div class="panel">
-  <form class="filters" hx-post="/summaries/generate" hx-target="#summaries-list" hx-swap="outerHTML"
+  <form class="filters" hx-post="/c/{{ chat_id }}/summaries/generate" hx-target="#summaries-list" hx-swap="outerHTML"
         hx-indicator="#summaries-list">
     <label>
       <span class="lbl">За сколько часов</span>
