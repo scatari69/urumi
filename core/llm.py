@@ -80,6 +80,24 @@ def is_free_model(model: dict) -> bool:
         return False
 
 
+def model_accepts_images(model: dict) -> bool:
+    """True if the model's input modality includes images, per OpenRouter's
+    'text->text' / 'text+image->text' style modality string."""
+    modality = ((model.get("architecture") or {}).get("modality")) or ""
+    input_side = modality.split("->", 1)[0]
+    return "image" in input_side
+
+
+async def model_supports_vision(model_id: str) -> bool:
+    """Best-effort check against the (possibly cached/stale) model list. Never raises —
+    an unavailable list just means the caller falls back to a text-only request."""
+    try:
+        models = await list_models()
+    except LLMModelsUnavailable:
+        return False
+    return any(m.get("id") == model_id and model_accepts_images(m) for m in models)
+
+
 async def _fetch_models() -> list[dict]:
     headers = {
         "HTTP-Referer": "https://github.com/urumi-the-bot",
@@ -312,7 +330,13 @@ class LLMClient:
                     f"after {MAX_ATTEMPTS} attempts: {response.text}"
                 )
 
-            response.raise_for_status()
+            if response.status_code >= 400:
+                # Covers e.g. 400 (a model rejecting unsupported content, such as an
+                # image sent to a non-vision model) — fall back rather than crash.
+                raise LLMUnavailableError(
+                    f"OpenRouter request failed with {response.status_code}: {response.text}"
+                )
+
             return response
 
         raise AssertionError("unreachable")

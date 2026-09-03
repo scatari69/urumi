@@ -1,3 +1,4 @@
+import base64
 import logging
 import random
 import time
@@ -7,9 +8,17 @@ import httpx
 from aiogram import Bot, F, Router
 from aiogram.types import Message, User
 
+from bot.handlers.logger import PHOTO_PLACEHOLDER
 from core.config import settings
 from core.db import get_db, get_settings, insert_message, setting_bool, setting_value
-from core.llm import LLMQuotaError, LLMUnavailableError, llm_client, parse_fallbacks, resolve_model
+from core.llm import (
+    LLMQuotaError,
+    LLMUnavailableError,
+    llm_client,
+    model_supports_vision,
+    parse_fallbacks,
+    resolve_model,
+)
 from core.moods import compose_system_prompt, mood_temperature, resolve_current
 from core.prompts import base_system_prompt
 
@@ -38,6 +47,11 @@ CHAT_FORMAT_NOTE = (
 HISTORY_LABEL = "История чата (для контекста):"
 CURRENT_LABEL = "Ответь на это сообщение от {name}:"
 
+# Telegram photos are always JPEG. Kept comfortably under most vision APIs' request
+# body limits even after base64's ~33% inflation.
+IMAGE_MIME_TYPE = "image/jpeg"
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
 QUOTA_MESSAGE = "Лимит запросов к модели исчерпан, попробую позже."
 OVERLOADED_MESSAGE = "Модель сейчас перегружена, попробуй чуть позже."
 TIMEOUT_MESSAGE = "Модель не ответила вовремя, попробуй ещё раз."
@@ -46,7 +60,7 @@ _last_reply_at: dict[int, float] = {}
 
 
 def _should_reply(message: Message, me: User, random_reply_chance: float) -> bool:
-    text = message.text or ""
+    text = message.text or message.caption or ""
     if me.username and f"@{me.username}".lower() in text.lower():
         return True
 
@@ -124,7 +138,23 @@ def _build_notes_block(rows: list[tuple[str | None, str]]) -> str:
     return "\n".join([NOTES_HEADER, *lines])
 
 
-@router.message(F.chat.id == settings.GROUP_CHAT_ID, F.text)
+async def _download_photo(bot: Bot, message: Message) -> bytes | None:
+    """Largest photo size that fits MAX_IMAGE_BYTES, or None if none does / it fails."""
+    for size in reversed(message.photo):
+        if size.file_size and size.file_size > MAX_IMAGE_BYTES:
+            continue
+        try:
+            buf = await bot.download(size.file_id)
+        except Exception:
+            logger.exception("Failed to download photo %s", size.file_id)
+            return None
+        data = buf.read()
+        if len(data) <= MAX_IMAGE_BYTES:
+            return data
+    return None
+
+
+@router.message(F.chat.id == settings.GROUP_CHAT_ID, F.text | F.photo)
 async def reply_in_chat(message: Message, bot: Bot) -> None:
     if message.from_user is None:
         return
@@ -152,8 +182,10 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
         mood, setting_value(values, "temperature", DEFAULT_TEMPERATURE, float)
     )
 
+    text_or_caption = message.text or message.caption or PHOTO_PLACEHOLDER
+
     history = await _fetch_history(message.chat.id, context_messages + 1)
-    if history and history[-1][0] == message.from_user.id and history[-1][2] == message.text:
+    if history and history[-1][0] == message.from_user.id and history[-1][2] == text_or_caption:
         history = history[:-1]
     history = history[-context_messages:] if context_messages > 0 else []
 
@@ -163,7 +195,7 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
         system_content = f"{system_content}\n\n{notes_block}"
 
     history_lines = [f"{display_name or 'unknown'}: {text}" for _, display_name, text in history]
-    current_line = f"{message.from_user.full_name}: {message.text}"
+    current_line = f"{message.from_user.full_name}: {text_or_caption}"
 
     user_content_parts = []
     if history_lines:
@@ -173,15 +205,39 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
     )
     user_content = "\n\n".join(user_content_parts)
 
+    model = resolve_model(values, "chat_model")
+    content: str | list[dict] = user_content
+
+    if message.photo:
+        if await model_supports_vision(model):
+            image_bytes = await _download_photo(bot, message)
+            if image_bytes:
+                b64 = base64.b64encode(image_bytes).decode("ascii")
+                content = [
+                    {"type": "text", "text": user_content},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{IMAGE_MIME_TYPE};base64,{b64}"},
+                    },
+                ]
+            else:
+                logger.warning(
+                    "Could not download photo in chat %s, replying on caption only", message.chat.id
+                )
+        else:
+            logger.info(
+                "Model %s has no vision support, replying to photo on caption only", model
+            )
+
     llm_messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": user_content},
+        {"role": "user", "content": content},
     ]
 
     try:
         answer = await llm_client.chat(
             llm_messages,
-            model=resolve_model(values, "chat_model"),
+            model=model,
             temperature=temperature,
             fallbacks=parse_fallbacks(values),
         )
