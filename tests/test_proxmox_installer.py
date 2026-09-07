@@ -97,6 +97,8 @@ class InstallerInputTests(unittest.TestCase):
         self.assertIn("http://192.0.2.10:8080", result)
         self.assertNotIn("<destroy>", result)
         self.assertNotIn("fake-secret", result)
+        self.assertIn("CREATE_UMASK:0022", result)
+        self.assertIn("SECRET_MODE:600", result)
 
     def test_explicit_dns_is_passed_to_container(self):
         answers = install_answers("yes")
@@ -138,6 +140,11 @@ pveam() {
 }
 curl() { printf '#!/bin/bash\n' > "${@: -1}"; }
 pct() {
+    if [[ $1 == create ]]; then
+        printf 'CREATE_UMASK:%s\n' "$(umask)"
+    elif [[ $1 == push && $4 == /root/urumi.env ]]; then
+        printf 'SECRET_MODE:%s\n' "$(stat -c %a "$3")"
+    fi
     if [[ $1 == exec && $4 == hostname ]]; then
         echo '192.0.2.10 '
     else

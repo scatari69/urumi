@@ -154,6 +154,10 @@ print("DB_PATH=/var/lib/urumi/urumi.db")
 ' > "$urumi_work_dir/urumi.env"
     unset bot_token router_key admin_password
 
+    # Keep secret files private, but do not let pct inherit a restrictive umask:
+    # systemd-networkd must be able to read the network configuration it creates.
+    umask 022
+
     pveam update
     template=$(pveam available --section system | awk '$2 ~ /^ubuntu-24\.04-standard_.*_amd64\.tar\./ {print $2}' | sort -V | tail -n 1)
     [[ -n $template ]] || die 'Шаблон Ubuntu 24.04 не найден в каталоге pveam.'
