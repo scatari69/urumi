@@ -8,6 +8,21 @@
   </label>
 
   <label>
+    <span class="lbl">Короткие живые ответы — de-llmify</span>
+    <span class="hint">Отдельный стиль для этой группы: обычно 1–2 предложения без шаблонных вступлений. Применяется после базового промпта и настроения, только к ответам в чате.</span>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="de_llmify_enabled" value="1"
+           {% if (values.get('de_llmify_enabled', '0') | lower) in ['1', 'true', 'on', 'yes'] %}checked{% endif %}>
+    <span class="lbl">Включить de-llmify</span>
+  </label>
+  <label>
+    <span class="lbl">Инструкции стиля</span>
+    <textarea name="de_llmify_prompt" rows="12">{{ values.get('de_llmify_prompt') or default_de_llmify_prompt }}</textarea>
+    <span class="hint">Можно отредактировать. Пустое поле восстанавливает стандартные инструкции. Пересказы и профили не меняются.</span>
+  </label>
+
+  <label>
     <span class="lbl">summary_prompt</span>
     <textarea name="summary_prompt" rows="4">{{ values.get('summary_prompt', '') }}</textarea>
     <span class="hint">Пусто — берётся значение по умолчанию.</span>

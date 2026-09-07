@@ -19,17 +19,20 @@ from core.moods import (ADMIN_ONLY_KEY, SOURCE_ADMIN, TTL_MINUTES_KEY, CannotDel
                         compose_system_prompt, delete_mood, get_mood, list_moods, log_switch,
                         recent_switches, resolve_current, set_current, set_default, upsert_mood)
 from core.profiles import delete_profile, list_profiles, rebuild_profile, save_note
-from core.prompts import base_system_prompt
+from core.prompts import DEFAULT_DE_LLMIFY_PROMPT, apply_chat_style, base_system_prompt
 from core.summaries import NotEnoughMessages, generate_summary
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.globals["default_de_llmify_prompt"] = DEFAULT_DE_LLMIFY_PROMPT
 
 PAGE_SIZE = 50
 SETTINGS_KEYS = (
     "system_prompt",
+    "de_llmify_enabled",
+    "de_llmify_prompt",
     "summary_prompt",
     "chat_model",
     "summary_model",
@@ -43,7 +46,7 @@ SETTINGS_KEYS = (
     "enabled",
 )
 
-CHECKBOX_KEYS = {"enabled", "mood_admin_only"}
+CHECKBOX_KEYS = {"enabled", "mood_admin_only", "de_llmify_enabled"}
 
 MODEL_FIELDS = (
     ("chat_model", "chat_model", "ответы в чате — важнее скорость"),
@@ -652,10 +655,13 @@ async def mood_activate(request: Request, chat_id: int, name: str) -> Response:
 
 @app.post("/c/{chat_id}/moods/{name}/preview", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
 async def mood_preview(request: Request, chat_id: int, name: str, prompt_fragment: str = Form("")) -> Response:
-    """Assemble base + fragment exactly as chat.py would, using the unsaved textarea text."""
+    """Preview persona, unsaved mood fragment and the saved chat style."""
+    await _known_chat(chat_id)
     values = await get_chat_settings(chat_id)
     base = base_system_prompt(values)
-    assembled = compose_system_prompt(base, {"prompt_fragment": prompt_fragment})
+    assembled = apply_chat_style(
+        compose_system_prompt(base, {"prompt_fragment": prompt_fragment}), values
+    )
     return await _moods_fragment(
         request, chat_id, None, {"name": name, "base": base, "assembled": assembled}
     )

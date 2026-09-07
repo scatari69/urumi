@@ -20,7 +20,7 @@ from core.llm import (
     resolve_model,
 )
 from core.moods import compose_system_prompt, mood_temperature, resolve_current
-from core.prompts import base_system_prompt
+from core.prompts import apply_chat_style, base_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,9 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
         return
 
     mood = await resolve_current(values)
-    system_prompt = compose_system_prompt(base_system_prompt(values), mood)
+    system_prompt = apply_chat_style(
+        compose_system_prompt(base_system_prompt(values), mood), values
+    )
     context_messages = setting_value(values, "context_messages", DEFAULT_CONTEXT_MESSAGES, int)
     temperature = mood_temperature(
         mood, setting_value(values, "temperature", DEFAULT_TEMPERATURE, float)
