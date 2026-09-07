@@ -100,6 +100,12 @@ class InstallerInputTests(unittest.TestCase):
         self.assertIn("CREATE_UMASK:0022", result)
         self.assertIn("SECRET_MODE:600", result)
 
+    def test_restrictive_caller_umask_does_not_close_container_etc(self):
+        result = terminal_run(MOCK_HOST + 'umask 077; main', install_answers("yes"))
+        self.assertIn("ETC_MODE:755", result)
+        self.assertIn("SECRET_DIR_MODE:700", result)
+        self.assertIn("SECRET_MODE:600", result)
+
     def test_explicit_dns_is_passed_to_container(self):
         answers = install_answers("yes")
         answers = [(prompt, "192.0.2.53" if prompt.startswith("DNS IPv4") else answer) for prompt, answer in answers]
@@ -142,8 +148,13 @@ curl() { printf '#!/bin/bash\n' > "${@: -1}"; }
 pct() {
     if [[ $1 == create ]]; then
         printf 'CREATE_UMASK:%s\n' "$(umask)"
+        mock_root=$(mktemp -d)
+        mkdir "$mock_root/etc"
+        printf 'ETC_MODE:%s\n' "$(stat -c %a "$mock_root/etc")"
+        rmdir "$mock_root/etc" "$mock_root"
     elif [[ $1 == push && $4 == /root/urumi.env ]]; then
         printf 'SECRET_MODE:%s\n' "$(stat -c %a "$3")"
+        printf 'SECRET_DIR_MODE:%s\n' "$(stat -c %a "${3%/*}")"
     fi
     if [[ $1 == exec && $4 == hostname ]]; then
         echo '192.0.2.10 '

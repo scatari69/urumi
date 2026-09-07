@@ -115,11 +115,19 @@ pct exec 104 -- getent ahostsv4 archive.ubuntu.com
 Если `eth0` имеет состояние `DOWN (unmanaged)`, а журнал `systemd-networkd`
 содержит `Failed to parse configuration file: Permission denied`, проверьте права:
 `pct exec 104 -- namei -l /etc/systemd/network/eth0.network`.
-Старый установщик передавал Proxmox `umask 077`, что могло закрыть доступ к
-созданной сетевой конфигурации. Для такого контейнера восстановите права
-`755` у `/etc/systemd/network` и `644` у `/etc/systemd/network/eth0.network`,
-затем перезапустите `systemd-networkd`. В исправленном установщике команды Proxmox
-выполняются с `umask 022`, а временный файл ключей сохраняет права `600`.
+Старый установщик передавал Proxmox `umask 077`: в таком контейнере даже `/etc`
+мог получить права `700`, закрывающие доступ для `systemd-networkd`. Восстановите
+права на сетевой путь и перезапустите службу (без рекурсивного chmod):
+
+```bash
+pct exec 104 -- chmod 755 /etc /etc/systemd /etc/systemd/network
+pct exec 104 -- chmod 644 /etc/systemd/network/eth0.network
+pct exec 104 -- systemctl restart systemd-networkd
+```
+
+В исправленном установщике команды Proxmox выполняются с `umask 022`, даже если
+у вызывающей оболочки задан `077`. Маска `077` действует только в отдельном
+подпроцессе записи ключей: временный каталог имеет права `700`, файл — `600`.
 
 Установщик ждёт готовности IPv4, маршрута и DNS до установки пакетов, а при ошибке
 обновления индексов APT останавливается. Если сбой произошёл на этом этапе,

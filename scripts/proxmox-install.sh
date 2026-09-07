@@ -78,6 +78,9 @@ bridge_exists() { [[ -d /sys/class/net/$1/bridge ]]; }
 main() {
     [[ ${1:-} != --help ]] || { printf 'Запуск: bash scripts/proxmox-install.sh (root на узле Proxmox VE).\n'; return; }
     check_host
+    # pct can create /etc itself; its directories must remain traversable by
+    # services such as systemd-networkd, even when the caller uses umask 077.
+    umask 022
     exec 3<> /dev/tty
     printf 'Установка Urumi: Ubuntu 24.04 LXC, Python 3.12, systemd.\n'
     pveversion
@@ -132,7 +135,6 @@ main() {
     ask confirmation 'Создать контейнер и запустить бота? Введите yes'
     [[ $confirmation == yes ]] || { printf 'Отменено.\n'; return; }
 
-    umask 077
     urumi_work_dir=$(mktemp -d /tmp/urumi-install.XXXXXXXX)
     trap cleanup EXIT
     trap 'exit 130' INT
@@ -142,6 +144,9 @@ main() {
     curl --fail --show-error --silent --location --connect-timeout 15 --max-time 120 \
         "https://raw.githubusercontent.com/scatari69/urumi/$ref/scripts/proxmox-guest.sh" -o "$installer"
     bash -n "$installer"
+    (
+    # Scope private permissions to the secret file, never to Proxmox commands.
+    umask 077
     printf '%s\n' "$bot_token" "$router_key" "$admin_password" "$admin_ids" "$admin_port" |
         python3 -c '
 import sys
@@ -152,11 +157,8 @@ for key in keys:
     print(key + "=\x27" + value + "\x27")
 print("DB_PATH=/var/lib/urumi/urumi.db")
 ' > "$urumi_work_dir/urumi.env"
+    )
     unset bot_token router_key admin_password
-
-    # Keep secret files private, but do not let pct inherit a restrictive umask:
-    # systemd-networkd must be able to read the network configuration it creates.
-    umask 022
 
     pveam update
     template=$(pveam available --section system | awk '$2 ~ /^ubuntu-24\.04-standard_.*_amd64\.tar\./ {print $2}' | sort -V | tail -n 1)
