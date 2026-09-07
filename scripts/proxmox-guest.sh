@@ -4,6 +4,42 @@ set +x
 set -Eeuo pipefail
 umask 022
 
+network_ready() {
+    [[ -n $(ip -4 -o address show dev eth0 scope global) ]] || return 1
+    [[ -n $(ip -4 route show default) ]] || return 1
+    timeout 3 getent ahostsv4 archive.ubuntu.com >/dev/null 2>&1
+}
+
+wait_for_network() {
+    local attempt
+    echo 'Ожидание IPv4, шлюза и DNS (до минуты)…'
+    for ((attempt=0; attempt<12; attempt++)); do
+        if network_ready; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo 'Сеть не готова: проверьте IP, шлюз, мост/VLAN, firewall и DNS контейнера в Proxmox.' >&2
+    ip -4 -brief address >&2 || true
+    ip -4 route >&2 || true
+    cat /etc/resolv.conf >&2 || true
+    echo 'Пакеты не устанавливались. После исправления сети повторите внутренний установщик; см. README.' >&2
+    return 1
+}
+
+install_packages() {
+    # apt update normally returns success even when all indexes fail to download.
+    if ! apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=2 \
+        -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update; then
+        echo 'Не удалось обновить индексы APT. Проверьте DNS и доступ к репозиториям; установка остановлена.' >&2
+        return 1
+    fi
+    apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 \
+        -o Acquire::https::Timeout=15 install -y --no-install-recommends \
+        ca-certificates git curl python3.12 python3.12-venv
+}
+
+main() {
 [[ $EUID == 0 ]] || { echo 'Требуется root.' >&2; exit 1; }
 [[ $(systemd-detect-virt --container) == lxc ]] || { echo 'Требуется LXC.' >&2; exit 1; }
 # shellcheck source=/dev/null
@@ -19,10 +55,8 @@ ref=${1:?Не указана версия}
 
 export DEBIAN_FRONTEND=noninteractive
 echo 'Установка Python и зависимостей…'
-# apt retries allow DHCP/DNS to come up after the first container boot.
-apt-get -o Acquire::Retries=5 update
-apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-    ca-certificates git curl python3.12 python3.12-venv
+wait_for_network
+install_packages
 
 useradd --system --home-dir /var/lib/urumi --shell /usr/sbin/nologin urumi
 install -d -o urumi -g urumi -m 0750 /var/lib/urumi
@@ -89,3 +123,8 @@ for ((attempt=0; attempt<60; attempt++)); do
 done
 echo 'Админка не запустилась. Проверьте: journalctl -u urumi -n 50' >&2
 exit 1
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+main "$@"
+fi

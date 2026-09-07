@@ -8,6 +8,7 @@ from pathlib import Path
 import pty
 import select
 import signal
+import subprocess
 import time
 import unittest
 
@@ -90,11 +91,18 @@ class InstallerInputTests(unittest.TestCase):
         result = terminal_run(MOCK_HOST + 'main', install_answers("yes"))
         self.assertIn("<create> <101>", result)
         self.assertIn("<--unprivileged> <1>", result)
+        self.assertIn("<--features> <nesting=1>", result)
         self.assertIn("<--rootfs> <local:4>", result)
         self.assertIn("ip=dhcp", result)
         self.assertIn("http://192.0.2.10:8080", result)
         self.assertNotIn("<destroy>", result)
         self.assertNotIn("fake-secret", result)
+
+    def test_explicit_dns_is_passed_to_container(self):
+        answers = install_answers("yes")
+        answers = [(prompt, "192.0.2.53" if prompt.startswith("DNS IPv4") else answer) for prompt, answer in answers]
+        result = terminal_run(MOCK_HOST + 'main', answers)
+        self.assertIn("<--nameserver> <192.0.2.53>", result)
 
     def test_cancel_does_not_create_container(self):
         result = terminal_run(MOCK_HOST + 'main', install_answers("no"))
@@ -151,6 +159,7 @@ def install_answers(confirmation):
         ("Сетевой мост [vmbr0]: ", ""),
         ("IPv4: dhcp или адрес/маска [dhcp]: ", ""),
         ("VLAN (0 — без тега) [0]: ", ""),
+        ("DNS IPv4 (пусто — наследовать от узла): ", ""),
         ("Порт админки [8080]: ", ""),
         ("Ветка, тег или commit репозитория scatari69/urumi [main]: ", ""),
         ("BOT_TOKEN: ", "fake-secret"),
@@ -159,6 +168,44 @@ def install_answers(confirmation):
         ("ID администраторов бота, JSON-массив [[]]: ", ""),
         ("Создать контейнер и запустить бота? Введите yes: ", confirmation),
     ]
+
+
+class GuestNetworkTests(unittest.TestCase):
+    def run_guest(self, commands):
+        return subprocess.run(
+            ["bash", "-c", 'source "$1"; ' + commands, "test", str(SCRIPT.with_name("proxmox-guest.sh"))],
+            capture_output=True, text=True, timeout=5,
+        )
+
+    def test_failed_apt_update_never_installs_packages(self):
+        result = self.run_guest('apt-get() { printf "%s\\n" "$*"; return 100; }; install_packages')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("APT::Update::Error-Mode=any", result.stdout)
+        self.assertNotIn("install -y", result.stdout)
+
+    def test_network_failure_stops_before_packages(self):
+        result = self.run_guest('''
+network_ready() { return 1; }
+sleep() { :; }
+ip() { :; }
+cat() { :; }
+wait_for_network
+echo PACKAGES
+''')
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("PACKAGES", result.stdout)
+        self.assertIn("Сеть не готова", result.stderr)
+
+    def test_network_can_become_ready_after_dhcp_delay(self):
+        result = self.run_guest('''
+tries=0
+network_ready() { tries=$((tries+1)); [[ $tries == 3 ]]; }
+sleep() { :; }
+wait_for_network
+echo "READY:$tries"
+''')
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("READY:3", result.stdout)
 
 
 if __name__ == "__main__":

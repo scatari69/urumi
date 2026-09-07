@@ -82,7 +82,8 @@ main() {
     printf 'Установка Urumi: Ubuntu 24.04 LXC, Python 3.12, systemd.\n'
     pveversion
 
-    local ct_name cores memory disk template_storage root_storage bridge address gateway vlan admin_port
+    local ct_name cores memory disk template_storage root_storage bridge address gateway vlan admin_port dns
+    local -a dns_options=()
     local ref bot_token router_key admin_password admin_ids confirmation template net0 installer ip_address
     # EXIT traps run after function locals have gone out of scope on errors.
     urumi_ctid='' urumi_work_dir='' urumi_created=0
@@ -110,6 +111,11 @@ main() {
         python3 -c 'import ipaddress,sys; ipaddress.IPv4Address(sys.argv[1])' "$gateway" || die 'Некорректный шлюз.'
     fi
     number vlan 'VLAN (0 — без тега)' 0 0 4094
+    ask dns 'DNS IPv4 (пусто — наследовать от узла)'
+    if [[ -n $dns ]]; then
+        python3 -c 'import ipaddress,sys; ipaddress.IPv4Address(sys.argv[1])' "$dns" || die 'Некорректный DNS IPv4.'
+        dns_options=(--nameserver "$dns")
+    fi
     number admin_port 'Порт админки' 8080 1024 65535
     ask ref 'Ветка, тег или commit репозитория scatari69/urumi' main
     [[ $ref =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ && $ref != *..* ]] || die 'Используйте имя без /, пробелов и .. либо commit SHA.'
@@ -121,6 +127,7 @@ main() {
 
     printf '\nКонтейнер %s (%s): %s CPU, %s МБ RAM, %s ГБ на %s.\n' "$urumi_ctid" "$ct_name" "$cores" "$memory" "$disk" "$root_storage"
     printf 'Сеть: %s, %s, VLAN %s; админка: порт %s; версия: %s.\n' "$bridge" "$address" "$vlan" "$admin_port" "$ref"
+    printf 'DNS: %s; nesting включён для systemd в Ubuntu 24.04.\n' "${dns:-наследуется от узла}"
     printf 'После установки бот начнёт polling. Другой экземпляр с этим токеном должен быть остановлен.\n'
     ask confirmation 'Создать контейнер и запустить бота? Введите yes'
     [[ $confirmation == yes ]] || { printf 'Отменено.\n'; return; }
@@ -155,9 +162,9 @@ print("DB_PATH=/var/lib/urumi/urumi.db")
     [[ -z $gateway ]] || net0+=",gw=$gateway"
     ((vlan == 0)) || net0+=",tag=$vlan"
     pct create "$urumi_ctid" "$template_storage:vztmpl/$template" \
-        --hostname "$ct_name" --ostype ubuntu --arch amd64 --unprivileged 1 \
+        --hostname "$ct_name" --ostype ubuntu --arch amd64 --unprivileged 1 --features nesting=1 \
         --cores "$cores" --memory "$memory" --swap 512 --rootfs "$root_storage:$disk" \
-        --net0 "$net0" --onboot 1 --description 'Urumi Telegram bot (systemd)'
+        --net0 "$net0" "${dns_options[@]}" --onboot 1 --description 'Urumi Telegram bot (systemd)'
     urumi_created=1
     pct start "$urumi_ctid"
     pct push "$urumi_ctid" "$installer" /root/urumi-install.sh --perms 0700
