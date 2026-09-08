@@ -136,18 +136,18 @@ async def update_profile(
     temperature: float,
     model: str,
     fallbacks: list[str] | None = None,
-) -> None:
+) -> bool:
     rows = await fetch_user_messages(chat_id, user_id, since_ts)
     messages_block = _build_messages_block(rows)
     if not messages_block:
-        return
+        return False
 
     display_name = rows[-1][0]
     profile = await get_profile(chat_id, user_id)
 
     if profile is not None and profile[3]:
         logger.info("Profile update: user %s opted out, skipping", user_id)
-        return
+        return False
 
     current_notes = (profile[1] if profile else None) or EMPTY_NOTES_PLACEHOLDER
 
@@ -170,10 +170,11 @@ async def update_profile(
     note = _truncate_note(answer)
     if not note:
         logger.warning("Profile update: model returned an empty note for user %s", user_id)
-        return
+        return False
 
     await save_note(chat_id, user_id, display_name, note)
     logger.info("Profile update: stored %d-char note for user %s", len(note), user_id)
+    return True
 
 
 async def run_profile_updates(bot_id: int) -> None:
@@ -242,13 +243,13 @@ async def delete_profile(chat_id: int, user_id: int) -> None:
         await db.commit()
 
 
-async def rebuild_profile(chat_id: int, user_id: int, hours: int | None = None) -> None:
+async def rebuild_profile(chat_id: int, user_id: int, hours: int | None = None) -> bool:
     """Regenerate one note from the retained history. Raises on LLM failure."""
     lookback = hours if hours is not None else settings.HISTORY_TTL_HOURS
     since_ts = int(time.time()) - lookback * 3600
 
     values = await get_chat_settings(chat_id)
-    await update_profile(
+    return await update_profile(
         chat_id,
         user_id,
         since_ts,

@@ -1,14 +1,16 @@
 import html
 import logging
 
+import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import Message, User
 
 from bot.filters import ActiveChat
 from core.config import settings
 from core.db import clear_chat_history
-from core.profiles import get_profile, opt_out
+from core.llm import LLMModelNotFound, LLMQuotaError, LLMUnavailableError
+from core.profiles import get_profile, opt_out, rebuild_profile
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,11 @@ async def show_profile(message: Message) -> None:
         await message.reply(NO_REPLY_MESSAGE)
         return
 
-    profile = await get_profile(message.chat.id, target.from_user.id)
+    await _reply_profile(message, target.from_user)
+
+
+async def _reply_profile(message: Message, user: User) -> None:
+    profile = await get_profile(message.chat.id, user.id)
     if profile is None:
         await message.reply(NO_PROFILE_MESSAGE)
         return
@@ -52,8 +58,43 @@ async def show_profile(message: Message) -> None:
         await message.reply(NO_PROFILE_MESSAGE)
         return
 
-    header = f"Заметка о {display_name or target.from_user.full_name}:"
+    header = f"Заметка о {display_name or user.full_name}:"
     await message.reply(html.escape(f"{header}\n{notes}", quote=False), parse_mode="HTML")
+
+
+@router.message(
+    ActiveChat(),
+    Command("createprofile"),
+)
+async def create_profile(message: Message) -> None:
+    if message.from_user is None or message.sender_chat is not None or message.from_user.is_bot:
+        await message.reply("Отправь команду от своего имени, а не от имени группы или канала.")
+        return
+    target = message.reply_to_message or message
+    if target.from_user is None or target.sender_chat is not None or target.from_user.is_bot:
+        await message.reply("Ответь этой командой на сообщение участника, чей профиль нужно создать.")
+        return
+    if target.from_user.id != message.from_user.id and message.from_user.id not in settings.ADMIN_USER_IDS:
+        await message.reply("Можно создать только свой профиль. Отправь /createprofile без ответа на чужое сообщение.")
+        return
+
+    profile = await get_profile(message.chat.id, target.from_user.id)
+    if profile is not None and profile[3]:
+        await message.reply(OPTED_OUT_MESSAGE)
+        return
+
+    await message.reply("Собираю заметку по сохранённой истории этого чата…")
+    try:
+        updated = await rebuild_profile(message.chat.id, target.from_user.id)
+    except (LLMModelNotFound, LLMQuotaError, LLMUnavailableError, httpx.HTTPError):
+        logger.exception("Profile creation failed for user %s in chat %s", target.from_user.id, message.chat.id)
+        await message.reply("Не удалось получить заметку от модели. Попробуй позже.")
+        return
+
+    if not updated:
+        await message.reply("Заметка не создана: нет подходящих сообщений или модель вернула пустой ответ.")
+        return
+    await _reply_profile(message, target.from_user)
 
 
 @router.message(ActiveChat(), Command("forgetme"))

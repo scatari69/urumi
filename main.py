@@ -28,6 +28,7 @@ COMMANDS = [
     BotCommand(command="summary", description="Пересказ последних сообщений (можно указать часы)"),
     BotCommand(command="mood", description="Текущее настроение бота / переключить"),
     BotCommand(command="profile", description="Заметка об участнике — реплаем на его сообщение (админы)"),
+    BotCommand(command="createprofile", description="Создать свой профиль (админы — чужой реплаем)"),
     BotCommand(command="forgetme", description="Стереть свою заметку, отказаться от профилирования"),
     BotCommand(command="forgetcontext", description="Очистить историю чата — требует confirm (админы)"),
 ]
