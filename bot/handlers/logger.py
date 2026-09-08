@@ -30,11 +30,11 @@ def _forward_origin_name(message: Message) -> str | None:
     if isinstance(origin, MessageOriginHiddenUser):
         return origin.sender_user_name
     if isinstance(origin, MessageOriginChannel):
-        return origin.author_signature or origin.chat.title or "канал"
+        name = origin.chat.title or "канал"
+        return f"{name} ({origin.author_signature})" if origin.author_signature else name
     if isinstance(origin, MessageOriginChat):
-        if origin.sender_chat is not None:
-            return origin.author_signature or origin.sender_chat.title or "группа"
-        return origin.author_signature or "группа"
+        name = origin.sender_chat.title or "группа"
+        return f"{name} ({origin.author_signature})" if origin.author_signature else name
     return "неизвестного автора"
 
 
@@ -42,7 +42,9 @@ def extract_text(message: Message) -> str:
     """Text to store/show for a message: caption or a placeholder for a photo, with a
     forward marker prepended when applicable — so the model sees who actually wrote a
     forwarded message instead of crediting it to whoever hit "forward"."""
-    body = message.text or message.caption or PHOTO_PLACEHOLDER
+    body = message.text or message.caption or (
+        PHOTO_PLACEHOLDER if message.photo else "[медиа или нетекстовое сообщение]"
+    )
     author = _forward_origin_name(message)
     if author is None:
         return body

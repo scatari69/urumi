@@ -42,9 +42,7 @@ CHAT_FORMAT_NOTE = (
     "собеседником. История ниже — строки вида 'Имя: текст', и каждая строка написана "
     "своим отдельным человеком: не путай их между собой и не приписывай слова одного "
     "участника другому. В конце отдельно указано, кто написал сообщение, на которое "
-    "нужно ответить именно сейчас, — отвечай ему, а не чату в целом. Если строка "
-    "начинается с '[переслано, автор: Имя]' — значит участник чата переслал сюда "
-    "чужое сообщение; переславший его не писал, автор указан в скобках. Формат "
+    "нужно ответить именно сейчас, — отвечай ему, а не чату в целом. Формат "
     "'Имя: текст' — это только разметка истории для тебя, а не образец для твоего "
     "ответа: не начинай свою реплику с имени, обращения по имени или '@Имя' — Telegram "
     "и так покажет, что это ответ именно этому человеку, лишний тег будет выдуманным "
@@ -208,6 +206,14 @@ async def reply_in_chat(message: Message, bot: Bot) -> None:
     user_content_parts = []
     if history_lines:
         user_content_parts.append(f"{HISTORY_LABEL}\n" + "\n".join(history_lines))
+    if message.reply_to_message is not None:
+        replied_to = message.reply_to_message
+        sender = replied_to.sender_chat or replied_to.from_user
+        name = (getattr(sender, "title", None) or getattr(sender, "full_name", None)
+                or "неизвестный отправитель")
+        user_content_parts.append(
+            f"Сообщение, на которое отвечает участник:\n{name}: {extract_text(replied_to)}"
+        )
     user_content_parts.append(
         f"{CURRENT_LABEL.format(name=message.from_user.full_name)}\n{current_line}"
     )

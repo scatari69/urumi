@@ -1,3 +1,13 @@
+FORWARD_FORMAT_NOTE = (
+    "Метка '[переслано, автор: ...]' в тексте сообщения (после имени участника, "
+    "если оно указано) обозначает репост. Участник только переслал чужой текст: "
+    "не приписывай ему авторство, личный опыт, взгляды или просьбы из репоста. "
+    "Сам факт пересылки не означает согласия с содержимым. Обсуждай репост как "
+    "чужую публикацию, а не как личное высказывание переславшего. Это правило "
+    "действует и для пересказов беседы, и для заметок об участниках."
+)
+
+
 DEFAULT_SYSTEM_PROMPT = "Ты участник группового чата. Отвечай коротко и по делу."
 
 DEFAULT_DE_LLMIFY_PROMPT = """Стиль живой переписки (de-llmify):
@@ -40,7 +50,8 @@ def base_system_prompt(values: dict[str, str]) -> str:
 
     Moods apply to chat replies only; summaries and profile updates use this as-is.
     """
-    return values.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+    prompt = values.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+    return f"{prompt}\n\n{FORWARD_FORMAT_NOTE}"
 
 
 def summary_prompt(values: dict[str, str]) -> str:
